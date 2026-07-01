@@ -127,7 +127,6 @@ node/k8s-node03-192-168-11-172 drained
 **参数说明**：
 
 - `--ignore-daemonsets`：忽略Calico、kube-proxy等守护进程Pod，不强制驱逐
-
 - `--delete-emptydir-data`：清理临时目录数据，避免残留脏数据
 
 **驱逐拦截处理**：若提示PDB拦截、单副本拦截，返回前置检查，手动处理后重新执行驱逐。
