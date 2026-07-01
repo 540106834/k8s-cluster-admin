@@ -76,8 +76,6 @@ EOF
 cat > /etc/sysctl.d/k8s.conf << EOF
 net.bridge.bridge-nf-call-iptables  = 1
 net.ipv4.ip_forward                 = 1
-net.core.somaxconn                   = 32768
-fs.file-max                          = 1048576
 EOF
 
 sudo sysctl --system
