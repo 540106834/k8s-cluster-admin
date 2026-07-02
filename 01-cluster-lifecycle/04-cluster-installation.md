@@ -76,6 +76,16 @@ tee /etc/containerd/certs.d/${HARBOR_DOMAIN}/host.toml > /dev/null <<EOF
 EOF
 ```
 
+创建 crictl 配置文件:
+```bash
+cat <<EOF | sudo tee /etc/crictl.yaml
+runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+timeout: 10
+debug: false
+EOF
+```
+
 ### 3.3 重启生效
 
 ```bash
@@ -146,6 +156,16 @@ Kubernetes v1.32.13
 apt-mark hold kubelet kubeadm kubectl
 ```
 
+作用讲解：
+```bash
+dpkg -i \
+    cri-tools_*.deb \        # CRI 调试工具（crictl），用于直接操作/查看 containerd 或 CRI runtime 状态，排障用
+    kubernetes-cni_*.deb \   # CNI 插件基础包，提供 Pod 网络所需的标准网络二进制（bridge/loopback/host-local等）
+    kubeadm_*.deb \          # 集群引导工具，用于初始化集群（kubeadm init）和节点加入（kubeadm join），仅bootstrap阶段使用
+    kubelet_*.deb \          # 节点核心组件，负责Pod生命周期管理（创建/启动/停止）、调用containerd、上报Node状态
+    kubectl_*.deb            # Kubernetes CLI客户端，用于与API Server交互（get/apply/logs等），控制平面操作入口
+```
+
 ### 4.2 版本锁定（生产必做，防止自动升级）
 
 Ubuntu22.04 使用 `apt-mark hold` 锁定版本，禁止系统自动更新 K8s 组件，保障集群版本稳定。
@@ -177,22 +197,40 @@ registry.k8s.io/coredns/coredns:v1.11.3
 registry.k8s.io/pause:3.10
 registry.k8s.io/etcd:3.5.24-0
 
+# 用脚本拉取镜像
+bash k8s-image-pull.sh
 
+# ========================= 如果内网环境需要镜像导出再拷贝 =============================
+root@ip-172-31-14-206:~# docker save -o k8s-v1.32.13.tar \
+registry.k8s.io/kube-apiserver:v1.32.13 \
+registry.k8s.io/kube-controller-manager:v1.32.13 \
+registry.k8s.io/kube-scheduler:v1.32.13 \
+registry.k8s.io/kube-proxy:v1.32.13 \
+registry.k8s.io/coredns/coredns:v1.11.3 \
+registry.k8s.io/pause:3.10 \
+registry.k8s.io/etcd:3.5.24-0
+
+docker load -i k8s-v1.32.13.tar
+
+# ==================================================================================
+
+```
+
+```bash
 HARBOR_REPO="harbor.jinshaoyong.com/k8s"
 
-sudo kubeadm init 
---apiserver-advertise-address=0.0.0.0 
---control-plane-endpoint=192.168.1.100 
---kubernetes-version=v1.32.13 
---service-cidr=10.96.0.0/16 
---pod-network-cidr=10.244.0.0/16 
---image-repository=${HARBOR_REPO} 
+sudo kubeadm init \
+--apiserver-advertise-address=192.168.11.161 \
+--kubernetes-version=v1.32.13 \
+--service-cidr=10.96.0.0/16 \
+--pod-network-cidr=10.32.0.0/16 \
+--image-repository=${HARBOR_REPO} \
 --upload-certs
 ```
 
 参数说明：
 
-- `--control-plane-endpoint`：集群 VIP 地址（高可用核心）
+- `--control-plane-endpoint`：集群 VIP 地址（高可用核心）单master 可以不写
 - `--upload-certs`：自动同步证书至其他 Master（多 Master 必备）
 - 镜像仓库使用阿里云镜像，适配国内生产环境
 
