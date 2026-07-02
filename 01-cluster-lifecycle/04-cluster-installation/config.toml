@@ -1,0 +1,42 @@
+version = 3
+root = "/var/lib/containerd"
+state = "/run/containerd"
+oom_score = 0
+imports = ["/etc/containerd/conf.d/*.toml"]
+
+[grpc]
+  address = "/run/containerd/containerd.sock"
+  uid = 0
+  gid = 0
+  max_recv_message_size = 16777216
+  max_send_message_size = 16777216
+
+[plugins]
+  # v3 标准镜像插件
+  [plugins."io.containerd.cri.v1.images"]
+    sandbox_image = "harbor.jinshaoyong.com/k8s/pause:3.10.1"
+    image_pull_progress_timeout = "15m0s"
+
+    [plugins."io.containerd.cri.v1.images".registry]
+      config_path = "/etc/containerd/certs.d"
+
+      # 终极杀招：直接在这里用 v3 语法对 Harbor 注入明文认证凭据
+      [plugins."io.containerd.cri.v1.images".registry.configs."harbor.jinshaoyong.com".auth]
+        username = "dev"
+        password = "Sage@123"
+
+  # v3 标准运行时插件
+  [plugins."io.containerd.cri.v1.runtime"]
+    max_container_log_line_size = 1048576
+
+    [plugins."io.containerd.cri.v1.runtime".containerd]
+      default_runtime_name = "runc"
+      [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
+        [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
+          runtime_type = "io.containerd.runc.v2"
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc.options]
+            SystemdCgroup = true
+
+    [plugins."io.containerd.cri.v1.runtime".cni]
+      bin_dirs = ["/opt/cni/bin"]
+      conf_dir = "/etc/cni/net.d"
