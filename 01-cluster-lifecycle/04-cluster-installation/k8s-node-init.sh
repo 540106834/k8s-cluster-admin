@@ -1,4 +1,4 @@
-#!/bin/bash
+#! /bin/bash
 set -e
 
 echo "========================"
@@ -14,7 +14,7 @@ echo "[1/7] Disable swap"
 swapoff -a
 
 # 幂等删除 swap 行
-sed -ri.bak '/\sswap\s/s/^/#/' /etc/fstab
+sed -i '/swap/s/^/#/' /etc/fstab
 
 # systemd 屏蔽（可选增强）
 systemctl mask swap.target 2>/dev/null || true
@@ -62,18 +62,16 @@ timedatectl set-timezone Asia/Shanghai
 #######################################
 echo "[5/7] Install base tools"
 
-apt-get update
-apt-get install -y \
-  curl wget vim \
-  net-tools \
-  conntrack \
-  ipvsadm \
-  ipset \
-  iptables \
-  tcpdump \
-  jq \
-  socat \
-  ethtool
+# 必须（Kubernetes 节点运行 / kubeadm 基础依赖）
+apt update && apt install -y \
+ca-certificates curl gnupg lsb-release \
+iptables socat conntrack ipset \
+chrony
+
+# 扩展（运维工具 / 调试 / 便利性工具）
+apt install -y \
+telnet wget tree zip unzip \
+vim  apt-transport-https
 
 
 #######################################
