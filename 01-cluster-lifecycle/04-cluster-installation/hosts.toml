@@ -1,0 +1,6 @@
+server = "https://harbor.jinshaoyong.com"
+
+[host."https://harbor.jinshaoyong.com"]
+  capabilities = ["pull", "resolve", "push"]
+  username = "dev"
+  password = "Sage@123"
