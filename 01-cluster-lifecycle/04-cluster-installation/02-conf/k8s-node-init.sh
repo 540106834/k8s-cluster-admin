@@ -71,7 +71,7 @@ chrony
 # 扩展（运维工具 / 调试 / 便利性工具）
 apt install -y \
 telnet wget tree zip unzip \
-vim  apt-transport-https
+vim  apt-transport-https ethtool
 
 
 #######################################

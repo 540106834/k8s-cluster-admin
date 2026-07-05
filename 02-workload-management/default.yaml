@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: default
+# 添加全局镜像拉取密钥
+imagePullSecrets:
+- name: harbor-secret

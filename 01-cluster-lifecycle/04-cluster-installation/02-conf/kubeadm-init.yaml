@@ -1,0 +1,40 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 192.168.11.161
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///run/containerd/containerd.sock
+  name: k8s-master-192-168-11-161
+
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v1.32.13
+controlPlaneEndpoint: "192.168.11.161:6443"
+imageRepository: harbor.jinshaoyong.com/k8s
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/16
+  podSubnet: 10.32.0.0/16
+
+scheduler:
+  extraArgs:
+    - name: "bind-address"
+      value: "0.0.0.0"
+
+controllerManager:
+  extraArgs:
+    - name: "bind-address"
+      value: "0.0.0.0"
+
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+#  强制打破独立模式，指定静态 Pod 核心路径
+staticPodPath: /etc/kubernetes/manifests

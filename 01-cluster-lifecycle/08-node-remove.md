@@ -65,7 +65,9 @@ NAME                        CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
 k8s-node03-192-168-11-172   71m          3%       1657Mi          42%
 
 # 检查是否存在本地盘、hostPath 绑定业务
-kubectl get pods -A -o wide | grep k8s-node03-192-168-11-172 | xargs kubectl describe pod
+kubectl get pods -A \
+  --field-selector spec.nodeName=k8s-node02-192-168-11-6 \
+  -o yaml | grep -A5 hostPath
 
 ```
 
@@ -95,7 +97,15 @@ kubectl get calicoapiserverconfigs -n kube-system
 
 ```bash
 # 封锁节点，停止新业务调度
-kubectl cordon k8s-node03-192-168-11-172
+kubectl cordon k8s-node02-192-168-11-6
+
+root@k8s-master01-192-168-11-4:~# kubectl cordon k8s-node02-192-168-11-6
+node/k8s-node02-192-168-11-6 cordoned
+root@k8s-master01-192-168-11-4:~# kubectl get nodes
+NAME                        STATUS                     ROLES                       AGE    VERSION
+k8s-master01-192-168-11-4   Ready                      control-plane,etcd,master   118d   v1.32.11+rke2r3
+k8s-node01-192-168-11-5     Ready                      <none>                      118d   v1.32.11+rke2r3
+k8s-node02-192-168-11-6     Ready,SchedulingDisabled   <none>                      118d   v1.32.11+rke2r3
 
 ```
 
@@ -105,7 +115,7 @@ kubectl cordon k8s-node03-192-168-11-172
 
 ```bash
 # 平滑驱逐所有Pod，自动调度至其他健康节点
-kubectl drain k8s-node03-192-168-11-172 --ignore-daemonsets --delete-emptydir-data
+kubectl drain k8s-node02-192-168-11-6 --ignore-daemonsets --delete-emptydir-data
 
 root@k8s-master01-192-168-11-4:~# kubectl drain k8s-node03-192-168-11-172 --ignore-daemonsets --delete-emptydir-data
 node/k8s-node03-192-168-11-172 already cordoned
@@ -134,7 +144,7 @@ node/k8s-node03-192-168-11-172 drained
 ### 3.3 确认节点无业务Pod
 
 ```bash
-root@k8s-master01-192-168-11-4:~# kubectl get pods -A | grep k8s-node03-192-168-11-172
+root@k8s-master01-192-168-11-4:~# kubectl get pods -A | grep k8s-node02-192-168-11-6
 kube-system       kube-proxy-k8s-node03-192-168-11-172                    1/1     Running   0             112d
 
 ```

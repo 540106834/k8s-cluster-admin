@@ -56,9 +56,9 @@ harbor.jinshaoyong.com/k8s/kube-apiserver:v1.32.13
 harbor.jinshaoyong.com/k8s/kube-controller-manager:v1.32.13
 harbor.jinshaoyong.com/k8s/kube-scheduler:v1.32.13
 harbor.jinshaoyong.com/k8s/kube-proxy:v1.32.13
-harbor.jinshaoyong.com/k8s/etcd:3.5.16-0
+harbor.jinshaoyong.com/k8s/etcd:3.5.24-0
 harbor.jinshaoyong.com/k8s/coredns:v1.10.13
-harbor.jinshaoyong.com/k8s/pause:3.10
+harbor.jinshaoyong.com/k8s/pause:3.10.1
 ```
 
 ## 六、镜像离线导入&推送标准流程

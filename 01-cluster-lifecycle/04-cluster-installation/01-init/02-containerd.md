@@ -201,9 +201,8 @@ vim /etc/containerd/certs.d/harbor.jinshaoyong.com/hosts.toml
 ```hosts.toml
 server = "https://harbor.jinshaoyong.com"
 
-[host."https://192.168.11.170"]
+[host."https://harbor.jinshaoyong.com"]
   capabilities = ["pull", "resolve"]
-  skip_verify = true
 ```
 
 ## 六、Systemd服务优化（DEB默认服务，仅优化参数）
@@ -254,7 +253,7 @@ debug: false
 EOF
 
 # 校验连通性
-crictl version
+crictl --version
 crictl info
 ```
 
@@ -272,10 +271,10 @@ dpkg -l | grep containerd
 crictl info
 
 # 3. 拉取pause基础镜像验证运行时能力
-crictl pull registry.aliyuncs.com/k8sxio/pause:3.10.1
+crictl pull registry.aliyuncs.com/k8sxio/pause:3.10
 
 # 4. 验证内网Harbor仓库连通性，忽略网页解析失败报错（tls跳过校验生效）
-crictl pull harbor.jinshaoyong.com/k8s/pause:3.10.1
+crictl pull harbor.jinshaoyong.com/k8s/pause:3.10
 
 # 5. 确认cgroup驱动配置生效
 grep SystemdCgroup /etc/containerd/config.toml

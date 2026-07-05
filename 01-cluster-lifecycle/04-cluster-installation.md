@@ -159,8 +159,6 @@ apt-mark hold kubelet kubeadm kubectl
 作用讲解：
 ```bash
 dpkg -i \
-    cri-tools_*.deb \        # CRI 调试工具（crictl），用于直接操作/查看 containerd 或 CRI runtime 状态，排障用
-    kubernetes-cni_*.deb \   # CNI 插件基础包，提供 Pod 网络所需的标准网络二进制（bridge/loopback/host-local等）
     kubeadm_*.deb \          # 集群引导工具，用于初始化集群（kubeadm init）和节点加入（kubeadm join），仅bootstrap阶段使用
     kubelet_*.deb \          # 节点核心组件，负责Pod生命周期管理（创建/启动/停止）、调用containerd、上报Node状态
     kubectl_*.deb            # Kubernetes CLI客户端，用于与API Server交互（get/apply/logs等），控制平面操作入口
@@ -219,12 +217,12 @@ docker load -i k8s-v1.32.13.tar
 ```bash
 HARBOR_REPO="harbor.jinshaoyong.com/k8s"
 
-sudo kubeadm init \
+kubeadm init \
 --apiserver-advertise-address=192.168.11.161 \
 --kubernetes-version=v1.32.13 \
 --service-cidr=10.96.0.0/16 \
 --pod-network-cidr=10.32.0.0/16 \
---image-repository=${HARBOR_REPO} \
+--image-repository=harbor.jinshaoyong.com/k8s \
 --upload-certs
 ```
 
@@ -281,7 +279,7 @@ kubectl get pods -n kube-system
 
 ```bash
 # Ubuntu22.04 新增Master节点加入命令
-sudo kubeadm join VIP:6443 --token xxx --discovery-token-ca-hash sha256:xxx --control-plane --certificate-key xxx
+kubeadm join VIP:6443 --token xxx --discovery-token-ca-hash sha256:xxx --control-plane --certificate-key xxx
 ```
 
 三台 Master 全部加入后，集群控制面高可用搭建完成
@@ -294,14 +292,14 @@ sudo kubeadm join VIP:6443 --token xxx --discovery-token-ca-hash sha256:xxx --co
 
 ```bash
 # Ubuntu22.04 Worker节点加入集群
-sudo kubeadm join VIP:6443 --token xxx --discovery-token-ca-hash sha256:xxx
+kubeadm join VIP:6443 --token xxx --discovery-token-ca-hash sha256:xxx
 ```
 
 Token 过期重新生成（生产常用）
 
 ```bash
 # Ubuntu22.04 重新生成join命令
-sudo kubeadm token create --print-join-command
+kubeadm token create --print-join-command
 ```
 
 ---

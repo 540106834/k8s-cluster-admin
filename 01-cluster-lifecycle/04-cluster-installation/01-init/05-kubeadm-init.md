@@ -45,18 +45,43 @@ curl -k https://harbor.jinshaoyong.com/v2/_catalog
 kubeadm init \
   --kubernetes-version=v1.32.13 \
   --apiserver-advertise-address=192.168.11.161 \
-  --pod-network-cidr=10.244.0.0/16 \
-  --service-cidr=10.96.0.0/12 \
+  --pod-network-cidr=10.32.0.0/16 \
+  --service-cidr=10.96.0.0/16 \
   --cri-socket=unix:///run/containerd/containerd.sock \
   --image-repository=harbor.jinshaoyong.com/k8s \
-  --ignore-preflight-errors=NumCPU,Mem
+  --upload-certs
+
 ```
 ### 关键参数说明
 1. `--image-repository=harbor.jinshaoyong.com/k8s`
    控制平面组件镜像全部从内网私有仓库拉取，无需访问外网k8s官方镜像源
 2. `--apiserver-advertise-address`：单Master本机内网IP
 3. `--cri-socket`：指定containerd运行时套接字
-4. `--ignore-preflight-errors`：低配机器忽略CPU、内存预检报错
+
+运行结果
+```bash
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 192.168.11.161:6443 --token i7q4pw.rh8q88pmywd6dfck \
+	--discovery-token-ca-cert-hash sha256:94d7b6d5c9dbcc7a172e88ed13989d541cf8b9bcda35e626425d1f6c624b7d7f 
+```
+
 
 ## 五、方式二：YAML配置文件初始化（生产标准推荐）
 ### 5.1 导出默认模板
@@ -74,10 +99,7 @@ localAPIEndpoint:
 nodeRegistration:
   criSocket: unix:///run/containerd/containerd.sock
   name: k8s-master-01
-  imagePullPolicy: IfNotPresent
-  # 统一systemd cgroup驱动，与containerd配置对齐
-  kubeletExtraArgs:
-    cgroup-driver: systemd
+
 ---
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
@@ -87,8 +109,8 @@ imageRepository: harbor.jinshaoyong.com/k8s
 controlPlaneEndpoint: 192.168.11.161:6443
 networking:
   dnsDomain: cluster.local
-  serviceSubnet: 10.96.0.0/12
-  podSubnet: 10.244.0.0/16
+  serviceSubnet: 10.96.0.0/16
+  podSubnet: 10.32.0.0/16
 # 组件监听0.0.0.0，允许节点内网访问
 scheduler:
   extraArgs:
@@ -104,7 +126,7 @@ etcd:
 
 ### 5.3 使用yaml文件执行初始化
 ```bash
-kubeadm init --config /usr/local/src/kubeadm-init.yaml --ignore-preflight-errors=NumCPU,Mem
+kubeadm init --config ./kubeadm-init.yaml
 ```
 
 ## 六、初始化完成后配置kubectl管理员权限（Master必操作）
