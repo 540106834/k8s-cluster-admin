@@ -1,280 +1,267 @@
-# Pod 生命周期管理规范（02\-pod\-lifecycle\.md）Ubuntu22\.04 离线生产版
+# 02-pod-lifecycle.md
 
-## 1\. 文档概述
+## 一、文档基础信息
 
-### 1\.1 文档定位
+- 归属目录：`02-workload-management/`
+- 前置阅读：`01-namespace-management.md`、`00-README.md`
+- 集群基准：Kubernetes v1.32.13，containerd 2.1.5，Calico v3.30.4
+- 适用环境分层：DEV本地、FAT、UAT、PROD
+- 核心覆盖：Pod完整生命周期、状态流转、容器启停流程、三类健康探针、退出码解析、优雅终止、故障定位
 
-本文为 Kubernetes 生产集群 **Pod 全生命周期标准化运维规范**，适配 **Ubuntu22\.04、K8s v1\.32、kubeadm 离线 Harbor 集群**。Pod 是 K8s 集群最小调度单元，本文统一 Pod 创建、启动、运行、重启、销毁、退出全流程机制，标准化探针配置、状态判定、生命周期钩子、异常识别、生产最佳实践，是所有工作负载运维的底层核心基准规范。
+## 二、Pod 核心底层定义
 
-### 1\.2 核心价值
+1. Pod 是 K8s **最小调度原子单元**，控制器(Deployment/StatefulSet/DaemonSet)仅管理Pod，不直接调度容器；
+2. 一个Pod包含一组强耦合容器：1个主业务容器 + 多个Sidecar（日志采集、监控、代理等）；
+3. Pod 共享同一网络栈、IPC、主机名、存储卷，容器间互通使用 `localhost`；
+4. Pod 无自愈能力，删除/崩溃后不会自动重建，依赖上层控制器实现副本保活；
+5. Pod 生命周期一次性：销毁后不会恢复，重建会生成全新Pod（IP/UID全部变更）。
 
-所有 Deployment、StatefulSet、DaemonSet、Job、CronJob 均基于 Pod 运行，掌握 Pod 生命周期是解决**启动失败、重启崩溃、健康检查失败、调度异常、发布抖动**等生产问题的核心基础，可彻底规避因生命周期机制不熟悉导致的误判、误操作、故障扩大问题。
+## 三、Pod 完整生命周期全流程
 
-### 1\.3 适用场景
+### 3.1 阶段1：调度阶段(Pending)
 
-- Pod 启动流程、运行状态、退出状态识别与判定
+1. APIServer接收Pod资源写入etcd；
+2. Scheduler筛选满足资源、节点亲和、污点容忍的节点；
+3. 绑定节点，写入Pod `spec.nodeName`；
+4. kubelet监听本机Pod变更，下发至containerd创建容器。
 
-- 就绪探针、存活探针、启动探针生产标准化配置
+阻塞场景：资源不足、节点亲和不匹配、镜像拉取失败、密钥/配置缺失。
 
-- 生命周期前置/后置钩子（preStop/postStart）运维适配
+### 3.2 阶段2：容器创建与初始化
 
-- Pod 重启策略、退出码、异常重启根因定位
+1. 拉取镜像；
+2. 启动 `initContainer` 初始化容器（串行执行，全部成功才启动业务容器）；
+3. 启动业务容器+sidecar容器；
+4. 容器就绪探针就绪后，加入Service Endpoint，接收流量。
 
-- 发布滚动更新、节点驱逐、资源调度引发的 Pod 重建分析
+### 3.3 阶段3：运行阶段(Running)
 
-- 生产 Pod 异常状态排查与生命周期故障治理
+所有主容器正常启动，就绪探针通过，持续提供业务服务。
 
-## 2\. Pod 核心基础定义
+### 3.4 阶段4：终止阶段(Terminating)
 
-### 2\.1 Pod 核心特性
+触发条件：控制器缩容、手动删除Pod、节点驱逐、节点故障；
 
-- Pod 是 K8s **最小可调度、可部署单元**，不可拆分调度
+1. Pod标记Terminating，从Service Endpoint移除，切断新流量；
+2. 发送 `SIGTERM` 信号给容器，等待 `terminationGracePeriodSeconds`（默认30s）；
+3. 等待程序优雅关闭、内存落盘、连接释放；
+4. 超时未退出则强制发送 `SIGKILL` 杀死容器；
+5. 清理卷、网络资源，Pod进入Terminated状态。
 
-- 一个 Pod 内可包含多个容器，共享网络栈、存储卷、命名空间
+### 3.5 阶段5：回收完成
 
-- Pod 为**瞬时、可销毁、不可自愈**资源，由上层控制器管理生命周期
+Pod资源从集群etcd清除，控制器按需新建Pod补齐副本数。
 
-- 生产环境禁止裸 Pod 运行，必须通过控制器托管（Deployment/StatefulSet 等）
+## 四、Pod 标准状态流转详解
 
-### 2\.2 Pod 完整生命周期链路
+### 4.1 Pending
 
-创建 → 调度\(Pending\) → 拉取镜像 → 启动容器 → 初始化就绪 → 正常运行 → 健康检测持续巡检 → 触发重建/驱逐/删除 → 优雅终止 → 强制销毁 → 重建/退出
+Pod已创建，未调度/容器未拉起。
+常见原因：
 
-## 3\. Pod 阶段状态完整解析（PHASE）
+- 无节点满足CPU/内存资源；
+- 镜像仓库不可达、镜像名称错误；
+- Secret/ConfigMap不存在；
+- 节点污点、亲和策略不匹配。
 
-Pod Phase 为宏观运行阶段，共 5 种标准状态，生产运维优先以此判断整体运行态势。
+### 4.2 Running
 
-### 3\.1 Pending（等待中）
+所有init容器执行完成，业务容器全部启动，至少一个就绪探针通过。
 
-Pod 已被 APIServer 接收、写入 etcd，但未调度或未完成初始化。
+### 4.3 Failed
 
-**常见原因**：节点资源不足、节点亲和性不匹配、镜像拉取失败、PVC 未绑定、配额限制、节点污点排斥。
+容器启动失败、异常退出且重启策略为Never/OnFailure。
+典型场景：程序启动报错、镜像内部程序崩溃、权限不足。
 
-### 3\.2 Running（运行中）
+### 4.4 Unknown
 
-Pod 已调度至目标节点，所有初始化容器完成执行，业务容器已启动。
+节点失联，kubelet未上报状态，节点宕机/断网。
 
-**注意**：Running 仅代表容器进程启动，**不代表业务就绪可用**，需结合就绪探针判断服务可用性。
+### 4.5 Terminating
 
-### 3\.3 Succeeded（成功终止）
+收到删除指令，正在优雅关闭，等待终止宽限期。
 
-所有容器正常执行完毕、退出码为 0，任务完成，不再重启。常见于 Job 一次性任务。
+### 4.6 CrashLoopBackOff
 
-### 3\.4 Failed（失败终止）
+容器反复启动崩溃，kubelet退避重试（间隔递增）。
+高频诱因：启动命令错误、端口冲突、OOM、配置文件缺失、数据库连接失败。
 
-容器异常退出、退出码非 0，任务执行失败，重启策略禁止重启则进入此状态。
+## 五、InitContainer 初始化容器机制
 
-### 3\.5 Unknown（未知状态）
+### 5.1 特性
 
-节点失联、kubelet 挂掉、网络中断，APIServer 无法获取 Pod 状态，状态超时未知。
+1. 串行执行，按yaml定义顺序依次运行；
+2. 全部执行成功退出(exit 0)，业务容器才会启动；
+3. init容器失败会反复重启，直到成功；
+4. 共享Pod存储卷，可提前拉取配置、初始化数据库、注册服务。
 
-## 4\. Pod 详细运行状态与异常状态解析
+### 5.2 典型使用场景
 
-Phase 仅为粗粒度状态，生产排障需关注 **容器细分状态与 Reason 异常原因**。
-
-### 4\.1 启动类异常状态
-
-- **ImagePullBackOff**：镜像拉取失败，镜像名称错误、离线仓库无镜像、网络不通、权限不足
-
-- **ErrImagePull**：瞬时镜像拉取错误，大概率仓库连通、镜像格式问题
-
-- **ErrImageNeverPull**：镜像拉取策略禁止拉取，本地无镜像
-
-- **CreateContainerError**：容器创建失败，配置错误、挂载目录不存在、权限不足、参数非法
-
-- **CreateContainerConfigError**：ConfigMap/Secret 缺失、配置挂载失败
-
-### 4\.2 运行崩溃类异常状态
-
-- **CrashLoopBackOff**：容器反复启动反复崩溃，启动后立即退出，kubelet 不断重试拉起
-
-- **OOMKilled**：内存超出限制，被系统 OOM 机制强制杀死
-
-- **StartupProbeFailed**：启动探针失败，容器未通过启动检测
-
-- **LivenessProbeFailed**：存活探针失败，判定容器异常，触发重启
-
-- **ReadinessProbeFailed**：就绪探针失败，容器正常运行但业务未就绪，不接收流量
-
-### 4\.3 调度阻塞类异常
-
-- **Unschedulable**：节点资源不足、亲和性/污点策略不匹配、配额已满
-
-- **ContainerCreating**：容器创建中，长时间卡住代表挂载、网络、镜像异常
-
-## 5\. Pod 重启策略（restartPolicy）
-
-重启策略决定容器退出后是否自动重启，全局作用于 Pod 所有容器，**控制器可限定策略范围**。
-
-### 5\.1 三种重启策略
-
-- **Always（默认）**：容器无论正常/异常退出，均自动重启，适配常驻业务（Deployment/DaemonSet）
-
-- **OnFailure**：仅异常退出（非0退出码）重启，正常完成不重启，适配一次性任务
-
-- **Never**：无论成败均不重启，适配离线一次性脚本、临时任务
-
-### 5\.2 控制器默认适配规则
-
-- Deployment / StatefulSet / DaemonSet：强制 Always 常驻重启
-
-- Job / CronJob：默认 OnFailure，按需重试
-
-## 6\. 三大探针生产标准化规范（核心）
-
-K8s 通过探针实现**业务健康感知、流量精准调度、异常自动重启**，生产所有业务必须配置全套探针。
-
-### 6\.1 启动探针 startupProbe
-
-用于适配**启动慢、初始化耗时久**的业务，保护启动阶段不被存活探针误杀重启。
-
-- 作用：容器启动阶段专属检测，启动成功后不再执行
-
-- 生产场景：Java、微服务、中间件、数据库类慢启动业务
-
-### 6\.2 存活探针 livenessProbe
-
-检测容器**运行健康状态**，检测失败直接重启容器，解决僵死、死锁、假死进程问题。
-
-### 6\.3 就绪探针 readinessProbe
-
-检测容器**业务是否就绪可对外提供服务**，失败不重启容器，仅将 Pod 从 Service 流量池中摘除。
-
-**生产核心意义**：实现滚动更新零停机、避免启动中业务接收流量报错。
-
-### 6\.4 探针三种检测方式
-
-- **httpGet**：HTTP 接口探测，适配 Web 业务（最常用）
-
-- **tcpSocket**：端口连通性探测，适配 TCP 中间件、数据库
-
-- **exec**：命令行探测，适配自定义健康检测脚本业务
-
-### 6\.5 生产标准探针模板
+- 等待中间件(MySQL/Redis)就绪；
+- 下载业务配置文件；
+- 目录权限初始化；
+- 注册服务到注册中心。
+
+### 示例片段
+
+```yaml
+spec:
+  initContainers:
+  - name: wait-mysql
+    image: harbor.jinshaoyong.com/k8s/busybox:latest
+    command: ["sh","-c","until ping mysql.uat.svc.cluster.local -c 1;do sleep 2;done"]
+```
+
+## 六、三类健康检查探针（生产强制配置）
+
+### 6.1 startupProbe 启动探针
+
+作用：区分**启动慢应用**与真实崩溃，避免刚启动就被kill。
+适用：Java、微服务、大镜像启动耗时较长程序。
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /health/startup
+    port: 8080
+  failureThreshold: 30
+  periodSeconds: 5
+```
+
+### 6.2 livenessProbe 存活探针
+
+作用：检测容器是否卡死、死锁、进程僵死；探测失败直接杀死重建Pod。
 
 ```yaml
 livenessProbe:
   httpGet:
-    path: /health
+    path: /health/live
     port: 8080
-  initialDelaySeconds: 30
+  initialDelaySeconds: 10
   periodSeconds: 10
+  timeoutSeconds: 3
   failureThreshold: 3
+```
+
+### 6.3 readinessProbe 就绪探针
+
+作用：判断Pod是否可接收流量；失败则从Service后端摘除，不杀容器。
+关键：滚动更新、扩容时，只有readiness通过才接入流量。
+
+```yaml
 readinessProbe:
   httpGet:
-    path: /ready
+    path: /health/ready
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 5
-  failureThreshold: 2
-startupProbe:
-  httpGet:
-    path: /health
-    port: 8080
-  initialDelaySeconds: 10
-  periodSeconds: 5
-  failureThreshold: 20
-
 ```
 
-## 7\. Pod 生命周期钩子机制
+### 6.4 探针三种探测方式
 
-### 7\.1 postStart 启动钩子
+1. httpGet：Web服务接口探测（主流）
+2. tcpSocket：端口连通检测（Redis/Mysql）
+3. exec：执行命令检测（脚本、进程检查）
 
-容器创建成功后触发，用于初始化脚本、权限配置、预热任务。
+## 七、容器重启策略 restartPolicy
 
-### 7\.2 preStop 优雅终止钩子（生产关键）
+仅作用Pod，控制器会覆盖Pod重建逻辑
 
-Pod 删除/重建前触发，用于**优雅关闭连接、保存现场、释放资源、注销注册中心**，配合终止宽限期实现零停机发布。
+1. Always（默认，Deployment/StatefulSet/DaemonSet固定使用）
+   容器退出无论成功失败，自动重启；适合常驻业务。
+2. OnFailure
+   仅异常退出(exit≠0)才重启；适合一次性任务Job。
+3. Never
+   退出后永不重启；临时测试Pod使用。
 
-生产必须配置 preStop 钩子，杜绝强制杀死进程导致的业务数据丢失、连接报错。
+## 八、容器退出码含义（故障排查核心）
+
+| 退出码 | 含义 | 处理方案 |
+|--------|------|----------|
+| 0 | 正常退出 | Job正常完成，无需处理 |
+| 1 | 通用程序异常 | 代码报错、启动参数错误 |
+| 137 | SIGKILL 强制杀死 | OOM内存超限、节点资源挤压 |
+| 143 | SIGTERM 优雅终止 | 缩容/删除Pod正常信号 |
+| 255 | 未知异常、权限不足、镜像损坏 | 查看容器日志定位 |
+
+## 九、Pod 优雅终止完整流程（生产关键）
+
+1. kubectl delete / 控制器缩容，Pod标记 `Terminating`；
+2. Service同步移除该Pod Endpoint，停止转发新请求；
+3. 发送 `SIGTERM` 信号给容器进程；
+4. 程序捕获信号，执行收尾：关闭连接、刷新缓存、保存数据；
+5. 等待 `terminationGracePeriodSeconds:30`；
+6. 超时未退出，发送 `SIGKILL` 强制销毁；
+7. 清理网络、存储卷资源。
+
+### 生产优化配置
 
 ```yaml
-lifecycle:
-  preStop:
-    exec:
-      command: ["/bin/sh","-c","sleep 3"]
-
+spec:
+  # 延长优雅关闭时间，给业务足够收尾窗口
+  terminationGracePeriodSeconds: 60
+  containers:
+  - name: app
+    # 容器内处理SIGTERM信号
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sh","-c","sleep 10"]
 ```
+`preStop` 钩子：收到删除信号先执行一段脚本，再下发SIGTERM，用于等待存量请求完成。
 
-## 8\. Pod 优雅终止完整流程
+## 十、生命周期钩子 lifecycle
 
-生产发布、节点驱逐、手动删除 Pod 均遵循此流程，是零停机发布的核心原理。
+1. postStart：容器创建后立即执行，不阻塞容器启动；
+2. preStop：容器终止前执行，优雅关闭前置操作。
 
-1. 接收删除请求，Pod 状态变为 Terminating
+## 十一、分环境落地规范（DEV/FAT/UAT/PROD）
 
-2. Service 立即摘除该 Pod 流量，停止新流量进入
+1. DEV本地：探针可省略，方便快速调试；
+2. FAT测试：必须配置readiness、liveness，startup可选；
+3. UAT预生产：完整三套探针，对齐生产参数；
+4. PROD生产：强制 startupProbe + readinessProbe + livenessProbe，配置preStop延长优雅关闭窗口，严格设置resources limits防止OOM CrashLoop。
 
-3. 执行 preStop 生命周期钩子脚本
-
-4. 等待优雅终止宽限期（默认 30s）
-
-5. 宽限期结束，无论是否执行完毕，强制 kill 容器进程
-
-6. kube\-controller\-manager 触发新建 Pod 完成替换
-
-## 9\. Pod 退出码详解（排障核心）
-
-- **Exit 0**：正常退出，任务执行完成
-
-- **Exit 1**：通用业务异常，代码报错、参数错误
-
-- **Exit 137**：被系统强制杀死（OOM、kill \-9、资源不足）
-
-- **Exit 139**：程序段错误、内存指针异常
-
-- **Exit 143**：优雅关闭信号终止（kill \-15，正常发布重建）
-
-## 10\. 日常运维常用命令
+## 十二、常用排查命令
 
 ```bash
-# 查看Pod状态与重启次数
-kubectl get pods -n <ns>
+# 查看Pod基础状态
+kubectl get pods -n fat
 
-# 查看Pod详细事件、状态、报错
-kubectl describe pod <pod-name> -n <ns>
+# 查看Pod完整生命周期事件（调度、探针、杀死记录）
+kubectl describe pod xxx -n uat
 
-# 查看容器日志排查崩溃原因
-kubectl logs <pod-name> -n <ns>
-kubectl logs -p <pod-name> -n <ns>
+# 查看容器日志定位崩溃原因
+kubectl logs xxx -n prod
+# 查看崩溃前历史日志
+kubectl logs -p xxx -n prod
 
-# 实时查看Pod生命周期事件
-kubectl get events -n <ns> --sort-by=.metadata.creationTimestamp
+# 进入容器调试
+kubectl exec -it xxx -n fat -- sh
 
+# 实时观察Pod状态变化
+kubectl get pods -n prod -w
 ```
 
-## 11\. 生产红线规范
+## 十三、高频生命周期故障
 
-- 生产常驻业务禁止裸 Pod 运行，必须由控制器托管
+1. CrashLoopBackOff
+   排查：kubectl logs 查看启动报错、内存limit、端口占用、配置缺失。
+2. Pod长期Pending
+   检查describe events：资源不足、镜像拉取失败、Secret不存在。
+3. Running但无法访问服务
+   readiness探针失败，未加入Service Endpoint，核对健康接口。
+4. OOM 退出码137
+   调大容器memory limits，优化程序内存占用。
+5. 删除Pod业务瞬间断流
+   未配置preStop、优雅关闭时间太短，存量请求未处理完成。
+6. 滚动更新新旧Pod同时接收流量
+   readiness探针初始延迟太短，程序未就绪就接入流量。
 
-- 所有生产业务必须配置 startup、liveness、readiness 全套探针
+## 十四、关联文档
 
-- 所有生产业务必须配置 preStop 优雅终止钩子，保障发布无损
-
-- 禁止探针参数配置不合理（超时过短、次数过少）导致批量误重启
-
-- 禁止忽略 Pod 重启、OOM、探针失败告警带病运行
-
-- 禁止常驻业务使用 OnFailure / Never 重启策略
-
-## 12\. 常见故障快速排障
-
-- **反复 CrashLoopBackOff**：优先查看日志、检查启动命令、配置文件、端口占用、权限问题
-
-- **频繁自动重启**：大概率存活探针误判、内存溢出、线程死锁
-
-- **发布成功但业务报错**：就绪探针未就绪，流量未平滑切换
-
-- **更新发布瞬间报错**：未配置 preStop，旧连接强制中断
-
-- **Pod OOM 重启**：业务内存泄漏、资源限制过低，需优化程序或调整 limit
-
-## 13\. 关联文档
-
-- Deployment 运维规范：`03-deployment-management.md`
-
-- 工作负载排障手册：`15-workload-troubleshooting.md`
-
-- 滚动发布与回滚规范：`11-rollout-management.md`、`12-rollback-management.md`
-
-> （注：部分内容可能由 AI 生成）
+1. 上层目录：`00-README.md`
+2. 资源约束配套：`07-resource-management.md` LimitRange/Quota防止OOM
+3. 无状态编排：`03-deployment-management.md` 滚动更新依赖就绪探针
+4. 故障汇总：`10-workload-troubleshooting.md` Pod启动崩溃完整排错流程
+5. 网络隔离：`06-cni-calico.md` 探针网络连通性异常排查

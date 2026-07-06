@@ -15,157 +15,115 @@ kubernetes-cluster-admin/
 ├── README.md                                  # Kubernetes Cluster Administrator 学习路线
 │
 01-cluster-lifecycle/
-├── 00-README.md                              # 集群生命周期管理
-├── 01-cluster-architecture.md               # Kubernetes 架构与职责边界
-├── 02-managed-vs-self-managed.md            # 托管集群与自建集群区别
-├── 03-cluster-planning.md                   # 集群规划（网络、版本、节点）
-├── 04-cluster-installation.md               # kubeadm/RKE2（了解）
-├── 05-kubeconfig-management.md              # kubeconfig 管理
-├── 06-worker-node-management.md             # Worker Node 管理
-├── 07-node-join.md                          # 节点加入
-├── 08-node-remove.md                        # 节点移除
-├── 09-node-maintenance.md                   # cordon / drain / uncordon
-├── 10-kubernetes-upgrade.md                 # Kubernetes 升级策略
-├── 11-certificate-renewal.md                # 证书更新（了解）
-├── 12-etcd-backup.md                        # etcd 备份（了解）
-├── 13-etcd-restore.md                       # etcd 恢复（了解）
-├── 14-cluster-migration.md                  # 集群迁移
-└── 15-cluster-decommission.md               # 集群下线
+├── 00-README.md                     # 集群生命周期总览
+├── 01-cluster-architecture.md       # Kubernetes 架构、组件职责与控制平面
+├── 02-cluster-planning.md           # 集群规划（托管/自建、网络、版本、节点）
+├── 03-cluster-installation.md       # kubeadm、RKE2 集群部署（了解）
+├── 04-kubeconfig-management.md      # kubeconfig 配置与访问管理
+├── 05-node-management.md            # Worker Node 生命周期管理（加入、维护、移除）
+├── 06-cluster-maintenance.md        # 集群维护（升级、证书续期）
+├── 07-etcd-backup-restore.md        # etcd 备份与恢复（了解）
+├── 08-cluster-migration.md          # 集群迁移与跨集群迁移
+└── 09-cluster-decommission.md       # 集群下线与资源清理
 │
 02-workload-management/
-├── 00-README.md                              # 工作负载管理
-├── 01-namespace-management.md                # Namespace
-├── 02-pod-lifecycle.md                      # Pod 生命周期
-├── 03-deployment-management.md              # Deployment
-├── 04-statefulset-management.md             # StatefulSet
-├── 05-daemonset-management.md               # DaemonSet
-├── 06-job-management.md                     # Job
-├── 07-cronjob-management.md                 # CronJob
-├── 08-resourcequota.md                      # ResourceQuota
-├── 09-limitrange.md                         # LimitRange
-├── 10-horizontal-pod-autoscaler.md          # HPA（了解）
-├── 11-rollout-management.md                 # Rollout
-├── 12-rollback-management.md                # Rollback
-├── 13-scaling-workloads.md                  # Scale
-├── 14-restart-workloads.md                  # Restart
-└── 15-workload-troubleshooting.md           # 工作负载排障
+├── 00-README.md                      # 工作负载管理总览
+├── 01-namespace-management.md        # Namespace 生命周期与资源隔离
+├── 02-pod-lifecycle.md               # Pod 生命周期、状态流转与健康检查
+├── 03-deployment-management.md       # Deployment 声明式部署与副本管理
+├── 04-stateful-workloads.md          # StatefulSet 有状态工作负载与持久化存储
+├── 05-daemon-workloads.md            # DaemonSet 节点级工作负载管理
+├── 06-batch-workloads.md             # Job、CronJob 批处理与定时任务
+├── 07-resource-management.md         # ResourceQuota、LimitRange 资源配额与限制
+├── 08-workload-scaling.md            # 手动扩缩容、HPA 自动伸缩
+├── 09-rollout-and-rollback.md        # 发布、更新、暂停、恢复、回滚与重启
+└── 10-workload-troubleshooting.md    # 工作负载故障诊断与常见问题排查
 │
 03-network-management/
-├── 00-README.md                              # 网络管理
-├── 01-kubernetes-network-model.md            # Kubernetes 网络模型
-├── 02-cni-overview.md                        # CNI 原理
-├── 03-service.md                             # Service
-├── 04-ingress.md                             # Ingress
-├── 05-dns.md                                 # CoreDNS
-├── 06-loadbalancer.md                        # LoadBalancer
-├── 07-networkpolicy.md                       # NetworkPolicy
-├── 08-tls-certificates.md                    # TLS/HTTPS
-├── 09-service-discovery.md                   # Service Discovery
-├── 10-external-access.md                     # 对外访问
-├── 11-cross-namespace-access.md              # Namespace 通信
-└── 12-network-troubleshooting.md             # 网络排障
+├── 00-README.md                     # 集群网络管理总览
+├── 01-kubernetes-network-model.md   # Kubernetes 网络模型与通信机制
+├── 02-cni-overview.md               # CNI 原理与网络插件
+├── 03-service-management.md         # Service、Endpoint、EndpointSlice
+├── 04-ingress-management.md         # Ingress、HTTPS 与对外访问
+├── 05-dns-service-discovery.md      # CoreDNS 与服务发现
+├── 06-network-policy.md             # NetworkPolicy 网络访问控制
+├── 07-load-balancing.md             # ClusterIP、NodePort、LoadBalancer
+├── 08-network-troubleshooting.md    # 网络故障诊断与排查
 │
 04-storage-management/
-├── 00-README.md                              # 存储管理
-├── 01-persistent-volume.md                  # PV
-├── 02-persistent-volume-claim.md            # PVC
-├── 03-storageclass.md                       # StorageClass
-├── 04-csi-driver.md                         # CSI
-├── 05-dynamic-provisioning.md               # 动态供给
-├── 06-volume-expansion.md                   # Volume 扩容
-├── 07-volume-snapshot.md                    # Snapshot
-├── 08-backup-and-restore.md                 # 数据备份恢复
-├── 09-data-migration.md                     # 数据迁移
-└── 10-storage-troubleshooting.md           # 存储排障
+├── 00-README.md                    # 集群存储管理总览
+├── 01-persistent-volume.md         # PV 生命周期与存储资源
+├── 02-persistent-volume-claim.md   # PVC 申请、绑定与使用
+├── 03-storageclass.md              # StorageClass、CSI 与动态供给
+├── 04-volume-operations.md         # 卷扩容、快照与生命周期管理
+├── 05-backup-and-migration.md      # 数据备份、恢复与迁移
+└── 06-storage-troubleshooting.md   # 存储故障诊断与常见问题排查
 │
 05-security-management/
-├── 00-README.md                              # 安全管理
-├── 01-authentication.md                      # Authentication
-├── 02-authorization.md                       # Authorization
-├── 03-rbac.md                                # RBAC
-├── 04-service-account.md                     # ServiceAccount
-├── 05-kubernetes-secret.md                   # Secret
-├── 06-image-pull-secret.md                   # 镜像认证
-├── 07-pod-security.md                        # Pod Security
-├── 08-network-security.md                   # NetworkPolicy 安全
-├── 09-audit-log.md                          # Audit Log
-└── 10-security-best-practices.md            # 最佳实践
+├── 00-README.md                    # 集群安全管理总览
+├── 01-authentication.md            # 身份认证（Authentication）
+├── 02-authorization.md             # 授权（RBAC、Node、Webhook）
+├── 03-admission-control.md         # 准入控制与 Pod Security
+├── 04-secret-management.md         # Secret 与镜像拉取认证
+├── 05-network-security.md          # NetworkPolicy 网络安全
+├── 06-audit-log.md                 # Audit 日志与审计
+└── 07-security-best-practices.md   # 安全加固与最佳实践
 │
 06-daily-operations/
-├── 00-README.md                              # 日常运维
-├── 01-kubectl-best-practices.md              # kubectl 最佳实践
-├── 02-common-kubectl-commands.md             # 高频命令
-├── 03-node-maintenance.md                    # 节点维护
-├── 04-resource-labels.md                     # Label
-├── 05-taints-and-tolerations.md             # Taint/Toleration
-├── 06-annotations.md                         # Annotation
-├── 07-patching-resources.md                  # Patch
-├── 08-rollout-management.md                 # Rollout
-├── 09-logs-and-events.md                     # Logs & Events
-├── 10-resource-monitoring.md                 # kubectl top
-├── 11-yaml-management.md                     # YAML 管理
-├── 12-kubectl-debug.md                       # kubectl debug
-└── 13-production-checklist.md                # 日常巡检 Checklist
+├── 00-README.md                    # 日常运维总览
+├── 01-kubectl-usage.md             # kubectl 使用技巧与最佳实践
+├── 02-resource-management.md       # Label、Annotation、Patch 管理
+├── 03-workload-operations.md       # rollout、scale、restart 等常用操作
+├── 04-logs-and-debug.md            # logs、events、exec、debug
+├── 05-resource-monitoring.md       # kubectl top、metrics 查询
+├── 06-yaml-management.md           # YAML 编写、导出、Diff、Apply
+├── 07-production-checklist.md      # 日常巡检与运维 Checklist
+└── 08-operation-cheatsheet.md      # 高频命令速查
 │
 07-monitoring-and-troubleshooting/
-├── 00-README.md                              # 故障排查体系（定义方法论、分层模型、排障路径）
+├── 00-README.md                             # 监控与故障排查总览
 │
-├── 01-node/                                 # Node 层故障域（宿主机资源与调度层问题）
-│   ├── 01-node-notready.md                  # Node NotReady（kubelet异常/网络断连/证书问题）
-│   ├── 02-disk-pressure.md                 # 磁盘压力（inode/空间不足导致调度限制）
-│   ├── 03-memory-pressure.md               # 内存压力（Node级OOM风险，触发调度驱逐）
-│   ├── 04-pid-pressure.md                  # PID耗尽（进程数上限导致系统不可用）
-│   ├── 05-node-unschedulable.md            # 不可调度（cordon/资源不足/调度策略限制）
-│   └── 06-node-debugging.md                # Node综合排障（kubelet/systemd/dmesg层分析）
+├── methodology/
+│   ├── 01-troubleshooting-methodology.md    # 排障方法论与定位流程
+│   ├── 02-troubleshooting-flow.md           # 分层排障路径与分析模型
+│   └── 03-kubectl-debug-toolkit.md          # kubectl 调试工具与常用命令
 │
-├── 02-pod/                                  # Pod 层故障域（最常见运行时问题）
-│   ├── 01-pod-pending.md                   # Pending（调度失败/资源不足/约束不满足）
-│   ├── 02-container-creating.md            # 容器创建中（runtime拉镜像/挂载阶段异常）
-│   ├── 03-crashloopbackoff.md              # CrashLoopBackOff（进程持续崩溃）
-│   ├── 04-oomkilled.md                     # OOMKilled（内存超限被内核杀死）
-│   ├── 05-imagepullbackoff.md              # 镜像拉取失败（认证/网络/镜像不存在）
-│   ├── 06-evicted.md                       # Pod驱逐（节点资源不足触发回收）
-│   ├── 07-createcontainerconfigerror.md    # 配置错误（env/volume/secret配置异常）
-│   ├── 08-createcontainererror.md          # 容器启动错误（entrypoint/权限/依赖问题）
-│   └── 09-pod-debugging.md                 # Pod综合排障（事件/日志/exec三板斧）
+├── node/
+│   ├── 01-node-common-failures.md           # Node 常见故障（NotReady、Pressure、不可调度等）
+│   └── 02-node-debugging.md                 # Node 综合排障
 │
-├── 03-network/                              # 网络故障域（Service通信与集群网络）
-│   ├── 01-dns-failure.md                   # DNS异常（CoreDNS解析失败或超时）
-│   ├── 02-service-failure.md              # Service不可达（endpoint/selector问题）
-│   ├── 03-ingress-failure.md              # Ingress异常（controller/规则/证书问题）
-│   ├── 04-loadbalancer-failure.md         # LB失败（云厂商/外部IP/健康检查）
-│   ├── 05-cni-failure.md                  # CNI网络失败（Pod网络不可达）
-│   └── 06-network-debugging.md            # 网络综合排障（iptables/CNI/DNS链路）
+├── pod/
+│   ├── 01-pod-common-failures.md            # Pod 常见故障（Pending、CrashLoopBackOff 等）
+│   └── 02-pod-debugging.md                  # Pod 综合排障
 │
-├── 04-storage/                              # 存储故障域（持久化数据链路）
-│   ├── 01-pvc-pending.md                  # PVC Pending（无可用PV或StorageClass问题）
-│   ├── 02-mount-failure.md               # 挂载失败（权限/节点/CSI异常）
-│   ├── 03-csi-failure.md                 # CSI驱动异常（存储插件不可用）
-│   ├── 04-volume-attach-failure.md       # Volume未挂载（attach/detach失败）
-│   └── 05-storage-debugging.md           # 存储综合排障（PV/PVC/CSI链路分析）
+├── network/
+│   ├── 01-network-common-failures.md        # 网络常见故障（DNS、Service、Ingress、CNI 等）
+│   └── 02-network-debugging.md              # 网络综合排障
 │
-├── 05-control-plane/                        # 控制面故障域（集群核心组件）
-│   ├── 01-apiserver.md                   # API Server异常（请求入口不可用）
-│   ├── 02-scheduler.md                   # 调度器异常（Pod无法分配Node）
-│   ├── 03-controller-manager.md          # 控制器异常（状态无法收敛）
-│   ├── 04-etcd.md                        # ETCD异常（数据存储/一致性问题）
-│   └── 05-control-plane-debugging.md     # 控制面整体排障（组件联动分析）
+├── storage/
+│   ├── 01-storage-common-failures.md        # 存储常见故障（PVC、CSI、挂载等）
+│   └── 02-storage-debugging.md              # 存储综合排障
 │
-├── 06-troubleshooting-methodology.md       # 排障方法论（分层定位/二分法/自顶向下）
-├── 07-kubectl-debug-toolkit.md             # kubectl调试工具集合（exec/logs/describe）
-├── 08-production-case-studies.md           # 生产事故案例（真实故障复盘）
-└── 09-troubleshooting-cheatsheet.md        # 排障速查表（症状→原因→命令）
+├── control-plane/
+│   ├── 01-control-plane-common-failures.md  # 控制面常见故障（API Server、Scheduler、etcd 等）
+│   └── 02-control-plane-debugging.md        # 控制面综合排障
 │
-└── appendix/
-    ├── kubectl-cheatsheet.md                  # kubectl Cheat Sheet
-    ├── kubernetes-api-resources.md            # API Resource 索引
-    ├── kubernetes-object-model.md             # Kubernetes 对象模型
-    ├── kubernetes-api-workflow.md             # API 请求流程
-    ├── kubernetes-control-loop.md             # Control Loop
-    ├── kubernetes-resource-lifecycle.md       # Resource 生命周期
-    ├── common-yaml-snippets.md                # 常用 YAML 模板
-    ├── useful-aliases.md                      # alias
-    └── production-checklist.md                # 生产环境检查清单
+├── production-case-studies.md               # 生产事故案例与复盘
+└── troubleshooting-cheatsheet.md            # 排障速查（症状→原因→检查命令）
+│
+08-managed-kubernetes/
+├── 00-README.md                     # 托管 Kubernetes 总览
+├── 01-managed-control-plane.md      # 托管 Control Plane（Master 托管架构）
+├── 02-node-pools.md                 # Node Pool 与节点生命周期管理
+├── 03-cloud-network.md              # VPC、子网、安全组、云 CNI
+├── 04-cloud-loadbalancer.md         # 云负载均衡（SLB、ELB、CLB、NLB）
+├── 05-cloud-storage.md              # 云盘、NAS、对象存储、CSI
+├── 06-iam-integration.md            # IAM、RAM、Workload Identity、IRSA
+├── 07-cluster-upgrade.md            # 托管集群升级与节点滚动升级
+├── 08-monitoring-and-logging.md     # 云监控、日志、告警集成
+├── 09-backup-and-disaster-recovery.md # 云备份、快照、跨地域容灾
+├── 10-cost-optimization.md          # 成本优化（节点、存储、网络）
+└── 11-multi-cloud-comparison.md     # ACK、EKS、GKE、AKS 对比
 ```
 
 ---

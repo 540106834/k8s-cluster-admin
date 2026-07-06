@@ -1,208 +1,291 @@
-# Namespace 命名空间管理规范（01-namespace-management.md）Ubuntu22.04 离线生产版
+# 01-namespace-management.md
+## 一、文档基础信息
+- 归属目录：`02-workload-management/`
+- 前置阅读：`02-workload-management/00-README.md`
+- 集群环境：Kubernetes v1.32.13 单Master集群，内网Harbor镜像仓库
+- 核心范围：Namespace原理、生命周期管理、资源配额、四层环境隔离规范、清理回收、安全规范、故障排查
 
-## 1. 文档概述
+## 二、Namespace 底层原理
+### 2.1 定义
+Namespace 是K8s内置**资源逻辑隔离单元**，用于在同一集群内划分独立资源分组，实现多环境、多业务、多团队隔离。
+底层本质：
+1. 所有带namespace字段的资源（Pod/Deployment/Service/ConfigMap/PVC等）隶属于某一个命名空间；
+2. Cluster级资源（Node/CRD/ClusterRole/StorageClass）**不归属任何namespace**，全局共享；
+3. 不同Namespace内同名资源互不冲突，例如 `fat/nginx` 和 `prod/nginx` 是两套独立工作负载。
 
-### 1.1 文档定位
+### 2.2 集群内置默认命名空间
+```
+# 1. default
+未指定namespace时资源默认创建在此，临时测试使用，业务禁止部署于此
+# 2. kube-system
+集群核心系统组件：calico、coredns、metrics-server、kube-proxy，集群内部组件专用
+# 3. kube-public
+公共只读资源，存放集群公共ConfigMap，所有用户可读
+# 4. kube-node-lease
+节点心跳租约资源，kubelet自动维护，禁止人工操作
+```
 
-本文为 Kubernetes 生产集群 **Namespace（命名空间）标准化运维规范**，适配 **Ubuntu22.04、K8s v1.32、kubeadm 离线 Harbor 集群**。统一命名空间的创建规范、资源隔离、配额管控、标签管理、权限约束、下线删除全流程标准，是所有业务上线、资源隔离、多环境划分的前置基础规范。
+### 2.3 隔离边界说明
+1. **资源隔离**：Pod、Service、Deployment、Secret、PVC等资源互相隔离；
+2. **网络不隔离**：同集群所有Namespace Pod互通，如需网络隔离需搭配Calico NetworkPolicy；
+3. **权限隔离**：配合RBAC，限制用户仅能操作指定Namespace；
+4. **资源配额隔离**：绑定ResourceQuota/LimitRange，限制单Namespace最大CPU/内存/Pod数量。
 
-### 1.2 核心作用
+## 三、四层环境划分标准（核心设计：DEV本地 + FAT测试 + UAT预生产 + PROD生产）
+### 3.1 环境分层说明
+1. **DEV（本地开发环境，不在集群内）**
+   - 载体：开发人员本地PC、Docker Desktop、本地Kind/minikube
+   - 用途：代码调试、本地自测、单元测试，**不上集群**
+   - 约束：无集群Namespace，不占用集群资源，数据仅本地留存
 
-Namespace 是 K8s 集群**资源逻辑隔离单元**，用于实现集群多租户、多业务、多环境隔离，避免不同业务资源、配置、Pod 相互干扰，是集群资源治理、配额限制、权限划分的基础维度。
+2. **FAT（功能测试环境，集群命名空间：fat）**
+   - 使用人群：研发、测试工程师
+   - 用途：完整功能联调、自动化用例、迭代版本测试
+   - 数据：模拟测试数据，每日定时清理重置
+   - 准入：开发提测镜像，完成单元测试后部署至fat
 
-### 1.3 适用场景
+3. **UAT（用户验收预生产环境，集群命名空间：uat）**
+   - 使用人群：测试、产品、业务验收人员
+   - 用途：完全复刻生产配置、流量模型、中间件规格，业务全流程验收
+   - 数据：脱敏生产仿真数据，每周重置一次
+   - 准入：FAT全量用例通过后，同步镜像与配置至uat
 
-- 生产/测试/预发多环境隔离划分
-- 多业务线、多项目资源隔离治理
-- 命名空间资源配额配置、资源总量限制
-- 命名空间生命周期管理：创建、运维、下线、销毁
-- 基于 Namespace 的 RBAC 权限细分管控
+4. **PROD（线上生产环境，集群命名空间：prod）**
+   - 使用人群：运维管理员，仅极小范围授权
+   - 用途：对外提供真实业务服务，承载真实用户流量
+   - 数据：真实业务核心数据，禁止随意重置、删除
+   - 准入：UAT验收通过、发布评审完成后灰度上线
 
-## 2. 命名空间基础认知
+### 3.2 集群Namespace标准清单
+| Namespace名称 | 环境层级 | 访问权限 | 资源配额松紧 | 数据生命周期 |
+|--------------|----------|----------|--------------|--------------|
+| fat | 功能测试 | 研发+测试可读写 | 宽松，上限中等 | 每日自动清空回收 |
+| uat | 预生产验收 | 测试只读、运维可读写 | 中等，对齐生产规格 | 每周重置数据 |
+| prod | 线上生产 | 仅运维管理员读写 | 严格，资源上限高、限制严谨 | 长期持久，禁止自动清理 |
 
-### 2.1 系统默认命名空间
-
-K8s 集群初始化自带 3 个核心命名空间，禁止修改、删除、自定义配置：
-- **default**：默认命名空间，未指定 ns 的资源默认归属，生产禁止投放核心业务
-- **kube-system**：集群系统组件专属命名空间，存放 apiserver、etcd、calico、coredns 等核心组件
-- **kube-public**：公共只读命名空间，存放集群公共配置、信任信息
-
-### 2.2 资源隔离范围
-
-Namespace 隔离**绝大多数业务资源**，不隔离集群级资源：
-- **命名空间级资源**：Pod、Deployment、StatefulSet、Service、Ingress、ConfigMap、Secret、PVC、Quota 等
-- **集群级资源（全局）**：Node、PV、StorageClass、CRD、ClusterRole 等，不受 NS 隔离
-
-## 3. 生产命名空间命名规范（强制）
-
-所有自定义命名空间必须遵循统一命名规则，杜绝随意命名、混乱无序。
-
-### 3.1 命名格式
-
-`{env}-{business}`  
-- env：环境标识（prod / test / dev / staging）
-- business：业务线/项目短标识
-
-### 3.2 标准示例
-
-- prod-api、prod-web、test-api、dev-tools、staging-job
-
-### 3.3 命名红线
-
-- 禁止使用大写字母、特殊符号、中文
-- 禁止使用 default、kube-system、kube-public 自定义业务
-- 禁止创建模糊、无意义命名空间（test1、demo、temp）
-
-## 4. 命名空间标签与注解规范
-
-所有生产 NS 必须标配固定标签，用于筛选、配额绑定、权限管控、运维统计。
-
-### 4.1 强制标签
-
-- `env: prod/test/dev/staging`：环境标识
-- `business: xxx`：业务线标识
-- `owner: xxx`：负责人
-
-### 4.2 标准 YAML（生产模板）
-
+### 3.3 统一标签规范（所有业务ns强制打标）
 ```yaml
+metadata:
+  labels:
+    env: fat/uat/prod
+    business: order/user/pay
+    owner: ops@shturl.
+```
+
+## 四、Namespace 基础生命周期管理
+### 4.1 创建命名空间（两种方式）
+#### 方式1：命令行快速批量创建四层集群环境ns
+```bash
+# 一次性创建fat/uat/prod
+for ns in fat uat prod;do kubectl create ns $ns;done
+```
+
+#### 方式2：声明式YAML（生产推荐，纳入版本管理）
+```yaml
+# ns-fat.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: prod-api
+  name: fat
   labels:
-    env: prod
-    business: api
-    owner: ops
-
+    env: fat
+    business: common
+```
+```bash
+kubectl apply -f ns-fat.yaml
+# 同理创建uat.yaml、prod.yaml
 ```
 
-## 5. 命名空间创建运维流程
-
-### 5.1 方式一：YAML 标准创建（生产推荐）
-
+### 4.2 查看命名空间清单
 ```bash
-# 应用命名空间配置
-kubectl apply -f ns-prod-api.yaml
-
-# 查看命名空间
+# 全部命名空间
 kubectl get ns
-
+# 按环境标签过滤
+kubectl get ns -l env=prod
+# 查看完整资源定义
+kubectl get ns fat -o yaml
 ```
 
-### 5.2 方式二：命令行快速创建（临时测试）
+### 4.3 切换kubectl默认操作环境
+```bash
+# 默认操作fat环境
+kubectl config set-context --current --namespace=fat
+# 切换至预生产uat
+kubectl config set-context --current --namespace=uat
+# 切换生产prod
+kubectl config set-context --current --namespace=prod
+
+# 查看当前默认环境
+kubectl config view | grep namespace
+```
+
+### 4.4 删除命名空间（高危分级管控）
+删除Namespace会**级联删除内部所有资源**（Pod/Deployment/Service/PVC/Secret等），不可恢复。
+1. fat环境：测试可自行删除重建，风险低
+2. uat环境：需测试负责人确认后执行
+3. prod环境：双人复核、提前备份etcd快照+全资源yaml才可执行
 
 ```bash
-kubectl create ns test-demo
-
+# 删除测试fat命名空间
+kubectl delete ns fat
 ```
 
-### 5.3 切换默认命名空间
-
+#### 删除卡死解决方案（存在Finalizer阻塞）
 ```bash
-# 安装工具（可选）
-apt install kubectx -y
-
-# 快速切换
-kubens prod-api
-
+kubectl edit ns 卡住的命名空间名称
+# 删除spec.finalizers数组内所有内容，保存后自动回收
 ```
 
-## 6. 命名空间资源管控（生产核心）
-
-生产所有业务命名空间**必须绑定资源配额与资源限制**，防止单业务耗尽集群资源。
-
-### 6.1 关联资源
-
-- **ResourceQuota**：命名空间总资源上限（总CPU、总内存、总Pod数）
-- **LimitRange**：单 Pod 资源上下限、默认资源规格
-
-详细配置参考：`08-resourcequota.md`、`09-limitrange.md`
-
-## 7. 命名空间只读锁定（生产保护）
-
-核心生产命名空间可配置**禁止删除保护**，防止误删导致业务全量下线。
-
-### 7.1 添加删除保护注解
-
+## 五、分环境资源配额管控（ResourceQuota + LimitRange）
+### 5.1 LimitRange：容器默认资源约束
+所有环境强制部署，防止容器无限制抢占节点资源
 ```yaml
+apiVersion: v1
+kind: LimitRange
 metadata:
-  annotations:
-    kubernetes.io/delete-protection: "true"
-
+  name: default-limits
+  namespace: fat
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    max:
+      cpu: "4"
+      memory: "8Gi"
+    type: Container
 ```
 
-开启后，直接删除 NS 会报错拦截，规避高危误操作。
+### 5.2 ResourceQuota 分环境配额标准
+#### fat（测试宽松配额）
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ns-quota
+  namespace: fat
+spec:
+  hard:
+    pods: "80"
+    requests.cpu: "16"
+    requests.memory: 32Gi
+    limits.cpu: "32"
+    limits.memory: 64Gi
+    persistentvolumeclaims: "30"
+```
 
-## 8. 命名空间下线与删除规范
+#### uat（预生产对齐生产规格，中等配额）
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ns-quota
+  namespace: uat
+spec:
+  hard:
+    pods: "50"
+    requests.cpu: "12"
+    requests.memory: 24Gi
+    limits.cpu: "24"
+    limits.memory: 48Gi
+    persistentvolumeclaims: "20"
+```
 
-**生产红线：禁止随意删除生产命名空间**，删除前必须完成业务下线、数据备份、资源确认。
+#### prod（生产严格配额，保障稳定性）
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ns-quota
+  namespace: prod
+spec:
+  hard:
+    pods: "40"
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "40"
+    limits.memory: 80Gi
+    persistentvolumeclaims: "15"
+```
 
-### 8.1 删除前置检查
-
+### 5.3 查看配额占用
 ```bash
-# 检查命名空间下所有资源
-kubectl get all -n prod-api
-
-# 检查 PVC、配置、密钥
-kubectl get pvc,cm,secret -n prod-api
-
+kubectl describe resourcequota ns-quota -n fat
+kubectl get resourcequota --all-namespaces
 ```
 
-### 8.2 标准删除命令
-
+## 六、分环境资源自动回收规范
+### 6.1 FAT环境：每日自动清空所有业务资源
 ```bash
-# 删除整个命名空间（级联删除所有资源）
-kubectl delete ns prod-api
-
+#!/bin/bash
+# /usr/local/src/post-install/workload/clean-fat.sh
+NS=fat
+kubectl delete deploy,sts,ds,job,cronjob,svc,ingress,cm,secret,pvc -n ${NS} --all
+echo "FAT环境资源已每日清空完成"
 ```
+配置定时任务每日凌晨2点执行，重置测试环境数据。
 
-### 8.3 卡死 Terminating 状态排障
+### 6.2 UAT环境：每周日凌晨全量重置
+同清理脚本，仅执行周期改为每周一次，保留一周验收数据。
 
-命名空间残留资源、webhook 拦截会导致删除卡死，执行强制清理：
+### 6.3 PROD环境：禁止自动清理
+仅人工按需删除闲置负载，删除前必须导出资源备份、执行etcd快照。
 
+### 6.4 单环境快速清空（保留Namespace不删除）
 ```bash
-# 导出并清理 finalizers
-kubectl get ns <ns-name> -o json | jq '.spec.finalizers=[]' | kubectl replace -f -
-
+# 清空uat所有业务资源
+kubectl delete all,cm,secret,pvc -n uat --all
 ```
 
-## 9. 日常运维常用命令清单
+## 七、四层环境安全隔离规范
 
+1. **DEV本地环境隔离**
+   开发本地仅用于自测，镜像禁止推送生产Harbor，本地数据不与集群互通，不接入内网中间件。
+2. **FAT测试环境权限**
+   研发、测试账号授予fat命名空间edit权限，禁止访问uat/prod；
+   测试数据库、Redis与预生产/生产完全隔离，不共享实例。
+3. **UAT预生产环境权限**
+   测试人员仅view只读权限，仅运维拥有编辑发布权限；
+   网络层面通过NetworkPolicy禁止fat环境Pod访问uat中间件。
+4. **PROD生产环境权限（最高安全等级）**
+   - 仅运维管理员拥有操作权限；
+   - 所有变更走发布流程，禁止临时kubectl操作；
+   - NetworkPolicy拦截fat/uat主动访问prod数据库、缓存；
+   - 删除prod资源、命名空间必须双人复核+提前全量备份。
+5. **Secret密钥隔离**
+   fat/uat/prod三套独立密钥，严禁跨环境复用敏感配置、数据库账号密码。
+
+## 八、常用操作速查
 ```bash
-# 列出所有命名空间
-kubectl get ns
+# 批量创建集群三层环境ns
+for ns in fat uat prod;do kubectl create ns $ns;done
 
-# 查看命名空间详情
-kubectl describe ns prod-api
+# 导出单环境全量资源备份（发布/删除前必执行）
+kubectl get all,cm,secret,pvc -n prod -o yaml > /usr/local/src/post-install/workload/backup/prod-$(date +%Y%m%d).yaml
 
-# 查看命名空间资源配额
-kubectl get resourcequota -n prod-api
-
-# 批量查看所有ns资源使用
-kubectl get ns -o yaml | grep -E 'name|quota'
-
+# 批量查看各环境Pod数量
+for ns in fat uat prod;do echo "==== ${ns} ====";kubectl get pods -n ${ns} | wc -l;done
 ```
 
-## 10. 生产红线规范
+## 九、常见故障排查
+1. **创建Pod提示 `exceeded quota`**
+   当前Namespace ResourceQuota资源耗尽，清理闲置负载或上调对应环境配额。
+2. **删除Namespace长时间Terminating卡死**
+   存在资源Finalizer阻塞，编辑资源/ns清空finalizer字段即可释放。
+3. **研发无法操作uat/prod**
+   RBAC权限仅绑定fat命名空间，需单独申请uat只读权限，生产仅运维开放。
+4. **fat Pod能连通prod数据库**
+   未配置NetworkPolicy网络隔离，补充策略限制跨环境访问。
+5. **LimitRange未自动填充容器资源**
+   对应命名空间未部署LimitRange资源，重新apply对应yaml。
 
-- 禁止生产业务运行在 default、kube-system 命名空间
-- 禁止创建无标签、无归属、无配额的空白生产命名空间
-- 禁止随意删除生产命名空间，删除必须走变更审批、备份流程
-- 禁止多业务混杂同一命名空间，必须按业务/环境拆分隔离
-- 禁止未配置 ResourceQuota、LimitRange 的命名空间上线正式业务
-
-## 11. 常见故障与排错
-
-- **命名空间删除卡死 Terminating**：多为资源 finalizers 残留或 webhook 拦截，清空 finalizers 强制释放
-- **资源创建报错配额不足**：Namespace 绑定 ResourceQuota 已满，调整配额或清理冗余资源
-- **权限不足无法操作 NS**：RBAC 权限未分配对应命名空间权限，重新绑定角色授权
-- **环境混乱业务冲突**：未按规范拆分 NS，重构命名空间并迁移业务隔离
-
-## 12. 关联文档
-
-- 资源配额管理：`08-resourcequota.md`
-- 资源限制管理：`09-limitrange.md`
-- 工作负载排障：`15-workload-troubleshooting.md`
-
-
+## 十、关联文档
+1. 上层总览：`00-README.md` 工作负载管理目录介绍
+2. 资源管控配套：`07-resource-management.md` 配额完整详解
+3. 权限绑定：`05-kubeconfig-management/04-user-kubeconfig.md` 按环境划分权限用户
+4. 网络隔离补充：`06-cni-calico.md` NetworkPolicy跨环境访问控制
+5. 数据备份兜底：`etcd-backup.md` 生产变更前置快照规范
+6. 故障汇总：`10-workload-troubleshooting.md`

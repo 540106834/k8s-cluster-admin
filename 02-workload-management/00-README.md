@@ -1,99 +1,80 @@
-# 工作负载管理 模块导读（00-README.md）
+# 02-workload-management/00-README.md
+## 一、文档基础信息
+### 目录归属
+路径：`02-workload-management/`
+前置依赖：`03-cluster-planning.md`、01系统初始化、containerd/Calico集群就绪
+集群基准：Kubernetes v1.32.13 单Master+2 Worker，Ubuntu22.04，Harbor内网镜像仓库
+配套关联：`05-kubeconfig-management/`、`etcd-backup.md`、`10-troubleshooting.md`
 
-## 1. 模块简介
+### 本模块核心定位
+工作负载（Workload）是K8s承载业务应用的核心资源集合，本目录完整覆盖**命名空间隔离、Pod基础、各类控制器、资源管控、发布变更、扩缩容、故障排查**全生命周期标准化运维操作，分为无状态、有状态、节点守护、定时批处理四大类业务模型，统一落地声明式运维规范。
 
-**workload-management** 为 Kubernetes 生产集群核心运维模块，聚焦**各类工作负载全生命周期标准化管理**，适配 **Ubuntu22.04、K8s v1.32、离线自建Harbor集群**。
+## 二、目录分档功能总览
+| 文件名称 | 核心覆盖内容 |
+|--------|------------|
+| 01-namespace-management.md | Namespace隔离逻辑、创建/删除/配额、多环境隔离、资源回收、命名空间安全规范 |
+| 02-pod-lifecycle.md | Pod完整生命周期、状态流转、探针（liveness/readiness/startup）、容器启停机制、退出码分析 |
+| 03-deployment-management.md | Deployment无状态应用、副本管理、滚动更新策略、多版本管理、基础声明式yaml模板 |
+| 04-stateful-workloads.md | StatefulSet有状态应用、稳定网络标识、有序启停、PVC一对一绑定、中间件（MySQL/Redis）部署规范 |
+| 05-daemon-workloads.md | DaemonSet节点全局负载、日志采集/监控/网络代理类组件、节点亲和调度、污点容忍 |
+| 06-batch-workloads.md | Job一次性批任务、CronJob定时调度、并发控制、任务失败重试、定时表达式规范 |
+| 07-resource-management.md | LimitRange容器默认资源限制、ResourceQuota命名空间资源配额、防止节点资源耗尽 |
+| 08-workload-scaling.md | 手动scale扩缩容、HPA CPU/内存/自定义指标自动伸缩、缩容保护、扩缩容事件观测 |
+| 09-rollout-and-rollback.md | 镜像更新、配置热更新、发布暂停/恢复、版本回滚、重启负载、发布策略调优 |
+| 10-workload-troubleshooting.md | Pod无法启动、镜像拉取失败、探针失败、OOM、调度失败、发布卡死、资源超限全套排错 |
 
-本模块统一生产环境工作负载的创建、发布、更新、扩缩容、重启、灰度、回滚、资源配额、故障排障全流程规范，覆盖无状态、有状态、守护进程、定时任务全类型资源，是业务日常运维、版本迭代、故障处置的核心基准文档集。
+## 三、核心理论分层认知
+### 3.1 底层最小单元：Pod
+Pod是调度最小原子，控制器均围绕Pod做编排管理；一个Pod内可包含一个或多个业务容器+sidecar容器。
 
-所有子文档均遵循**生产可用、零业务乱序、可灰度、可回滚、可兜底**的运维原则，适配离线生产集群落地，杜绝随意操作导致的业务抖动、资源溢出、调度异常问题。
+### 3.2 四大控制器工作负载分类
+1. **无状态 Workload（Deployment）**
+   无固定网络标识、无绑定持久化存储，副本完全对等，适合Web、API服务。
+2. **有状态 Workload（StatefulSet）**
+   有序序号、固定域名、独立PVC，数据库、缓存、消息队列等中间件专用。
+3. **节点守护 Workload（DaemonSet）**
+   每个匹配节点仅运行1副本，日志、监控、网络插件、安全代理。
+4. **批处理定时 Workload（Job/CronJob）**
+   一次性执行任务、周期定时任务，数据同步、备份、定时清理脚本。
 
-## 2. 模块核心运维准则（通用红线）
+### 3.3 全生命周期运维链路
+环境隔离(Namespace) → 定义资源规格(ResourceQuota/LimitRange) → 选择对应控制器部署 → 配置健康探针保障可用性 → 手动/自动扩缩容承载流量 → 版本滚动发布/回滚迭代 → 故障定位排查
 
-适用于本模块所有工作负载操作，为生产强制规范：
+## 四、标准化操作规范（本目录统一约束）
+1. 所有业务资源统一使用 `kubectl apply -f` 声明式管理，禁止kubectl create/run临时创建；
+2. 资源文件按命名空间分目录存放，规范路径：`/usr/local/src/post-install/workload/${ns}/`；
+3. 强制配置 `resources.requests` + `resources.limits`，全局开启LimitRange兜底；
+4. 生产发布使用滚动更新策略，禁止Recreate停机更新；
+5. 所有业务必须配置就绪探针+存活探针，杜绝不健康Pod接入流量；
+6. 命名空间按环境划分：dev/test/prod，通过ResourceQuota隔离资源，避免环境互相抢占；
+7. 操作变更留存yaml版本，发布前导出资源备份，重大变更前执行etcd快照备份。
 
-- **变更必可控**：所有工作负载更新、重启、扩缩容、回滚操作，必须在业务低峰窗口执行，禁止高峰期变更
+## 五、推荐阅读&实操顺序
+1. 基础隔离：01-namespace-management.md（部署业务前置必做）
+2. 底层原理：02-pod-lifecycle.md（理解Pod运行基础）
+3. 业务部署主体：03-deployment（无状态）→04-stateful（中间件）→05-daemon（节点组件）→06-batch（定时任务）
+4. 资源防护：07-resource-management.md（集群保护）
+5. 弹性运维：08-workload-scaling.md（扩缩容）
+6. 版本迭代：09-rollout-and-rollback.md（发布回滚）
+7. 异常兜底：10-workload-troubleshooting.md
 
-- **发布必灰度**：生产业务严禁暴力重建Pod，统一使用滚动更新机制，保障零停机发布
+## 六、上下游文档关联
+### 上游前置
+1. `03-cluster-planning.md`：集群资源、网段、存储前置规划
+2. `02-containerd.md`：容器运行时镜像、资源底层限制
+3. `06-cni-calico.md`：Pod网络连通性基础
 
-- **故障可回滚**：任何版本更新操作必须保留历史版本，支持一键回滚兜底
+### 下游配套
+1. `05-kubeconfig-management/`：多用户、多命名空间权限管控
+2. `etcd-backup.md`：负载变更前数据备份规范
+3. `10-troubleshooting.md`：集群级通用故障排查
+4. `cluster-migration.md`：业务负载跨集群迁移导出导入规范
 
-- **资源必约束**：所有业务负载必须配置资源限制、配额管控，防止单业务抢占集群资源
-
-- **操作可追溯**：所有变更留存操作记录、YAML配置、版本记录，满足运维审计要求
-
-- **异常必处置**：Pod异常、调度失败、启动报错、重启异常必须即时排查闭环，禁止带病运行
-
-## 3. 文档目录与功能说明
-
-本模块包含15篇标准化运维文档，覆盖命名空间、全类型工作负载、运维操作、资源管控、排障全场景：
-
-### 3.1 基础环境管理
-
-- **01-namespace-management.md**：命名空间创建、隔离、权限、配额、生命周期管理规范，实现集群资源分层隔离
-
-### 3.2 核心资源与生命周期
-
-- **02-pod-lifecycle.md**：Pod完整生命周期、状态解析、启动流程、探针机制、异常状态判定标准
-
-### 3.3 主流工作负载运维
-
-- **03-deployment-management.md**：无状态业务标准运维，创建、发布、更新、副本管理生产规范
-
-- **04-statefulset-management.md**：有状态业务专属运维，有序部署、稳定网络、持久化数据一致性管控
-
-- **05-daemonset-management.md**：节点级守护进程运维，日志采集、监控、网络组件全局部署规范
-
-- **06-job-management.md**：一次性任务管理，任务执行、重试、终止、资源回收规范
-
-- **07-cronjob-management.md**：定时任务运维，周期调度、容错、并发控制、异常兜底机制
-
-### 3.4 集群资源管控
-
-- **08-resourcequota.md**：命名空间级资源配额限制，限制总CPU、内存、Pod数量，防止资源耗尽
-
-- **09-limitrange.md**：单Pod资源上下限约束，统一业务资源规格，杜绝超配、低配问题
-
-- **10-horizontal-pod-autoscaler.md**：HPA自动扩缩容原理与配置，实现业务流量自动弹性伸缩
-
-### 3.5 工作负载变更运维
-
-- **11-rollout-management.md**：滚动发布运维，灰度更新、发布暂停、发布进度核查标准流程
-
-- **12-rollback-management.md**：业务版本回滚规范，异常一键回退、版本比对、回滚后校验机制
-
-- **13-scaling-workloads.md**：手动扩缩容运维，副本数调整、容量评估、业务适配规范
-
-- **14-restart-workloads.md**：业务优雅重启、分批重启、强制重启标准化流程，规避重启雪崩
-
-### 3.6 故障排障闭环
-
-- **15-workload-troubleshooting.md**：全类型工作负载异常排障手册，覆盖启动失败、调度失败、重启崩溃、网络异常、资源不足等场景
-
-## 4. 模块使用规范
-
-- **日常运维优先查阅**：业务发布、变更、重启、扩缩容严格对应子文档标准流程执行
-
-- **故障优先排障文档**：工作负载异常优先参考 `15-workload-troubleshooting.md` 快速定位修复
-
-- **新业务上线规范**：必须配套命名空间、资源配额、资源限制，遵循完整上线流程
-
-- **变更闭环要求**：所有变更操作完成后必须进行业务、资源、日志全维度验收
-
-## 5. 关联顶层模块
-
-- 集群基础运维、节点管理、版本升级、证书续期、ETCD灾备、集群迁移/退役
-
-- 本模块为**业务层核心运维规范**，所有操作依赖集群底层环境稳定性
-
-## 6. 文档版本信息
-
-- 适配系统：Ubuntu 22.04
-
-- 适配K8s版本：v1.32
-
-- 运行环境：离线kubeadm集群 + Harbor私有镜像仓库
-
-- 文档等级：生产强制执行规范
-
-> （注：部分内容可能由 AI 生成）
+## 七、适用业务场景清单
+1. Web/API微服务 → Deployment
+2. MySQL、Redis、MongoDB等持久化中间件 → StatefulSet
+3. Filebeat、Prometheus NodeExporter、网络代理 → DaemonSet
+4. 数据同步、定时报表、数据库备份、日志清理 → CronJob/Job
+5. 多环境研发隔离、资源限额管控 → Namespace+ResourceQuota+LimitRange
+6. 流量波动自动扩容、低谷缩容节省成本 → HPA自动伸缩
+7. 版本迭代、灰度发布、故障快速回滚 → Rollout管理

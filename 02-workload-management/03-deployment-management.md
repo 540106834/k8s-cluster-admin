@@ -1,275 +1,238 @@
-# Deployment 实战管理规范（03\-deployment\-management\.md）Ubuntu22\.04 离线生产版
+# 03-deployment-management.md
+## 一、文档基础信息
+- 归属目录：`02-workload-management/`
+- 前置阅读：`00-README.md`、`01-namespace-management.md`、`02-pod-lifecycle.md`
+- 集群版本：Kubernetes v1.32.13，containerd 2.1.5，内网Harbor镜像仓库
+- 环境分层：DEV本地、FAT功能测试、UAT预生产、PROD生产
+- 核心覆盖：Deployment原理、声明式模板、副本管控、更新策略、扩缩容、环境差异化规范、故障排查
 
-## 1\. 文档说明（实战导向）
+## 二、Deployment 底层理论
+### 2.1 定位
+Deployment 是**无状态业务标准控制器**，底层通过 ReplicaSet 管控Pod副本，提供版本滚动更新、副本自愈、历史版本回滚能力；
+适用于Web、API、网关、后台服务等无状态应用，不适合数据库、消息队列等有状态中间件。
 
-本文摒弃冗余理论，聚焦 **生产环境 Deployment 日常运维全实操**，适配 Ubuntu22\.04、K8s v1\.32、离线 Harbor 集群。覆盖：标准创建、灰度发布、版本更新、暂停/恢复发布、扩缩容、重建重启、下线删除、生产踩坑、故障速排。所有命令、YAML 模板**可直接生产复用**，为无状态业务唯一标准运维文档。
+### 2.2 层级控制关系
+Deployment → ReplicaSet → Pod
+1. Deployment：定义期望副本数、镜像、更新策略、探针、资源限制；
+2. ReplicaSet：负责维持对应版本Pod副本数量；
+3. 滚动更新时会创建新ReplicaSet，旧ReplicaSet保留用于回滚；
+4. 仅删除Deployment才会级联删除所有ReplicaSet与Pod。
 
-**适用业务**：Web 服务、API 网关、微服务、后台常驻无状态业务。
+### 2.3 无状态核心特征
+1. Pod完全对等，无固定网络标识、无专属PVC；
+2. Pod重建后IP、主机名变更，流量可任意调度至任意副本；
+3. 水平扩缩容不影响业务数据一致性。
 
-**核心特性**：滚动更新、零停机发布、多版本回溯、自愈重建，生产无状态业务**强制使用 Deployment**，禁止裸 Pod 运行。
-
-## 2\. 生产标准 Deployment YAML 模板（直接复用）
-
-生产上线**必须严格套用此模板**，包含资源限制、全套探针、优雅终止、滚动更新策略，适配离线生产环境。
-
+## 三、标准声明式Deployment模板（分环境适配）
+### 通用基础模板
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api-service
-  namespace: prod-api
+  name: api-server
+  namespace: fat
   labels:
-    app: api-service
-    env: prod
+    app: api-server
+    env: fat
+    business: order
 spec:
-  replicas: 3
+  # 副本数分环境差异化配置
+  replicas: 2
   selector:
     matchLabels:
-      app: api-service
-  # 生产滚动更新核心策略
+      app: api-server
+  # 滚动更新策略（生产强制，禁止Recreate）
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-  # 保留历史版本数（用于回滚）
+  # 保留历史版本数，用于回滚
   revisionHistoryLimit: 10
-  # 禁止自动扩缩容外的无效调度
-  progressDeadlineSeconds: 600
   template:
     metadata:
       labels:
-        app: api-service
+        app: api-server
     spec:
-      # 生产常驻业务固定重启策略
-      restartPolicy: Always
+      # 优雅关闭时长
+      terminationGracePeriodSeconds: 60
       containers:
-      - name: api-service
-        image: harbor.offline.com/prod/api-service:v1.0.0
+      - name: api-server
+        image: harbor.jinshaoyong.com/k8s/api-server:v1.0.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
-        # 资源配额约束（生产必填）
+        # 资源限制（全环境强制）
         resources:
           requests:
-            cpu: 100m
+            cpu: 200m
             memory: 256Mi
           limits:
             cpu: 1000m
-            memory: 512Mi
-        # 全套生产探针（零停机发布核心）
-        livenessProbe:
+            memory: 1Gi
+        # 全套健康探针（UAT/PROD强制）
+        startupProbe:
           httpGet:
-            path: /health
+            path: /health/startup
             port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          failureThreshold: 3
+          failureThreshold: 30
+          periodSeconds: 5
         readinessProbe:
           httpGet:
-            path: /ready
+            path: /health/ready
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
-          failureThreshold: 2
-        startupProbe:
+        livenessProbe:
           httpGet:
-            path: /health
+            path: /health/live
             port: 8080
           initialDelaySeconds: 10
-          periodSeconds: 5
-          failureThreshold: 20
-        # 优雅停机（杜绝连接报错）
+          periodSeconds: 10
+        # 优雅关闭钩子
         lifecycle:
           preStop:
             exec:
-              command: ["/bin/sh","-c","sleep 3"]
-
+              command: ["sh","-c","sleep 10"]
+        env:
+        - name: ENV_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: env-config
+              key: env
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: api-config
 ```
 
-**生产关键参数解释**：
+## 四、分环境副本&策略规范（DEV/FAT/UAT/PROD）
+| 环境 | replicas副本数 | rollingUpdate配置 | revisionHistoryLimit | 探针要求 |
+|------|----------------|-------------------|----------------------|----------|
+| DEV本地 | 1 | 无强制要求 | 3 | 可选，本地调试可省略 |
+| FAT测试 | 2 | maxSurge=1,maxUnavailable=0 | 5 | readiness+liveness必配，startup可选 |
+| UAT预生产 | 3 | maxSurge=1,maxUnavailable=0 | 10 | 三探针完整配置，对齐生产参数 |
+| PROD生产 | ≥3（核心服务5+） | maxSurge=1,maxUnavailable=0 | 10 | 三探针+preStop钩子强制配置 |
 
-- `maxUnavailable: 0`：发布过程**保证业务不降级、不丢实例**
+### 更新策略两种模式说明
+1. **RollingUpdate（推荐全环境）**
+   逐步新建Pod，就绪后销毁旧Pod，业务零停机；`maxUnavailable:0` 保证更新过程副本数不低于期望值。
+2. **Recreate（禁止生产使用）**
+   先删除全部旧Pod，再新建，会出现业务中断，仅临时测试场景使用。
 
-- `maxSurge: 1`：最多超配1个实例，平稳灰度
-
-- `revisionHistoryLimit: 10`：保留10个历史版本，支持随时回滚
-
-- `IfNotPresent`：适配离线环境，优先本地镜像，无需外网拉取
-
-## 3\. 日常实操命令（生产高频）
-
-### 3\.1 创建/应用 Deployment
-
+## 五、Deployment 核心生命周期操作
+### 5.1 创建/更新部署（声明式标准操作）
 ```bash
-# 标准创建/更新
-kubectl apply -f deployment-api.yaml -n prod-api
-
-# 快速查看状态
-kubectl get deploy -n prod-api
-kubectl get pods -n prod-api -o wide
-
+# 标准声明式提交，增量更新资源
+kubectl apply -f deploy-api-fat.yaml -n fat
 ```
 
-### 3\.2 查看详细发布状态
-
+### 5.2 查看Deployment、ReplicaSet状态
 ```bash
-# 查看发布进度、版本、就绪数
-kubectl rollout status deploy api-service -n prod-api
-
-# 查看历史版本记录
-kubectl rollout history deploy api-service -n prod-api
-
-# 查看指定版本详细变更内容
-kubectl rollout history deploy api-service --revision=2 -n prod-api
-
+# 查看所有deployment
+kubectl get deploy -n uat
+# 关联查看副本控制器
+kubectl get rs -n prod
+# 完整详情，事件、更新进度、探针报错
+kubectl describe deploy api-server -n prod
 ```
 
-### 3\.3 镜像版本更新（生产灰度发布唯一方式）
-
+### 5.3 手动扩缩容副本
 ```bash
-# 离线环境更新镜像版本，触发滚动发布
-kubectl set image deploy api-service api-service=harbor.offline.com/prod/api-service:v1.0.1 -n prod-api
-
-# 实时盯发布进度
-kubectl rollout status deploy api-service -n prod-api
-
+# 临时调整副本至5
+kubectl scale deploy api-server --replicas=5 -n fat
+# 生产缩容至3
+kubectl scale deploy api-server --replicas=3 -n prod
 ```
+> 规范：长期副本调整优先修改yaml文件apply，scale仅临时应急。
 
-### 3\.4 扩缩容实操
-
+### 5.4 镜像版本迭代发布
+#### 方式1：命令行快速更新镜像
 ```bash
-# 手动扩容至5副本
-kubectl scale deploy api-service --replicas=5 -n prod-api
-
-# 手动缩容至2副本（低峰操作）
-kubectl scale deploy api-service --replicas=2 -n prod-api
-
+kubectl set image deploy api-server api-server=harbor.jinshaoyong.com/k8s/api-server:v1.0.1 -n prod
 ```
+#### 方式2：修改yaml文件apply（版本管理推荐）
+修改spec.template.spec.containers.image字段后执行 `kubectl apply -f`。
 
-### 3\.5 业务重启实操（生产优雅重启）
-
+### 5.5 观察滚动更新进度
 ```bash
-# 优雅滚动重启（不丢业务、不中断服务）
-kubectl rollout restart deploy api-service -n prod-api
-
+# 实时观测更新Pod创建销毁
+kubectl rollout status deploy api-server -n prod -w
+# 查看更新事件记录
+kubectl rollout history deploy api-server -n prod
 ```
 
-### 3\.6 暂停/恢复发布（紧急冻结变更）
-
+### 5.6 重启Deployment（重载配置/环境变量）
 ```bash
-# 暂停发布（暂停所有更新、冻结版本）
-kubectl rollout pause deploy api-service -n prod-api
-
-# 恢复发布
-kubectl rollout resume deploy api-service -n prod-api
-
+kubectl rollout restart deploy api-server -n fat
 ```
+底层逻辑：触发滚动更新，新建一批Pod，旧Pod逐步销毁。
 
-### 3\.7 下线删除 Deployment
-
+### 5.7 版本回滚（故障核心操作）
 ```bash
-# 仅删除当前Deployment，保留命名空间、配置
-kubectl delete deploy api-service -n prod-api
-
-# 彻底清空该命名空间所有业务（下线专用）
-kubectl delete ns prod-api
-
+# 查看历史发布版本
+kubectl rollout history deploy api-server -n prod
+# 回滚至上一个稳定版本
+kubectl rollout undo deploy api-server -n prod
+# 指定回滚到某一历史版本
+kubectl rollout undo deploy api-server --to-revision=2 -n prod
 ```
 
-## 4\. 生产零停机发布核心流程（标准上线步骤）
-
-所有生产版本迭代**必须严格执行此步骤**，禁止暴力重建、删除Pod。
-
-1. **发布前校验**：确认当前集群Pod全部就绪、无重启、无报错日志
-
-2. **执行镜像更新**：kubectl set image 触发滚动更新
-
-3. **实时监控进度**：rollout status 观察发布完成
-
-4. **业务校验**：核对接口可用性、日志、QPS、错误率
-
-5. **留存版本**：确认无误后留存历史版本，用于紧急回滚
-
-## 5\. 版本回滚实战（生产紧急兜底）
-
-### 5\.1 快速回滚上一个版本
-
+### 5.8 删除Deployment
 ```bash
-kubectl rollout undo deploy api-service -n prod-api
-
+# 删除整套无状态服务（级联删除RS、Pod）
+kubectl delete -f deploy-api-prod.yaml
+# 命令删除
+kubectl delete deploy api-server -n fat
 ```
 
-### 5\.2 回滚至指定历史版本
+## 六、资源标签与选择器规范
+1. 固定标签：`app、env、business、owner`，统一过滤Deployment；
+2. selector.matchLabels必须与pod template labels完全一致，否则控制器无法管理Pod；
+3. 禁止修改selector标签，修改会导致Deployment丢失原有Pod控制权。
 
+## 七、生产落地约束规范
+1. 所有业务无状态服务必须使用Deployment，禁止裸Pod运行；
+2. PROD/UAT环境强制使用RollingUpdate，maxUnavailable=0保障可用性；
+3. 必须配置resources requests+limits，搭配命名空间LimitRange兜底；
+4. 开启revisionHistoryLimit留存历史版本，故障支持快速回滚；
+5. 预生产、生产全套三探针+preStop优雅关闭配置；
+6. 镜像统一内网Harbor，imagePullPolicy:IfNotPresent，减少重复拉取；
+7. 发布前导出当前Deployment yaml备份，重大变更提前执行etcd快照；
+8. FAT环境每日自动清理闲置Deployment，PROD禁止自动清理，人工操作双人复核。
+
+## 八、高频故障与排查方案
+1. **滚动更新卡住，新Pod无法就绪**
+   执行`kubectl describe deploy`查看事件，多为readiness探针失败、配置文件缺失、镜像拉取失败。
+2. **Deployment副本数长期达不到期望**
+   节点CPU/内存资源不足、镜像私有仓库鉴权失败、PVC无法绑定。
+3. **回滚后业务异常**
+   历史镜像被Harbor清理，提前留存稳定版本镜像；核对revision历史版本。
+4. **更新后大量Pod CrashLoopBackOff**
+   新版本程序bug、配置参数变更、数据库连接地址未适配环境。
+5. **修改selector标签后Pod失控**
+   selector为不可变字段，如需变更只能新建Deployment，切换流量后删除旧资源。
+6. **缩容/删除Pod流量瞬间丢失**
+   preStop钩子未配置、terminationGracePeriodSeconds时间过短，存量请求未处理完成。
+
+## 九、常用运维速查命令
 ```bash
-# 先查看版本列表
-kubectl rollout history deploy api-service -n prod-api
+# 批量导出命名空间所有deployment备份
+kubectl get deploy -n prod -o yaml > deploy-prod-backup-$(date +%Y%m%d).yaml
 
-# 回滚指定revision版本
-kubectl rollout undo deploy api-service --revision=3 -n prod-api
+# 批量扩容所有业务副本至2（FAT环境）
+kubectl get deploy -n fat | awk '{print $1}' | grep -v NAME | xargs -I {} kubectl scale deploy {} --replicas=2 -n fat
 
+# 查看所有发布历史记录
+kubectl rollout history deploy --all-namespaces
 ```
 
-**实战要点**：回滚后必须观察3分钟，确认Pod就绪、业务无报错、日志正常。
-
-## 6\. 生产高频故障排查（实战速排）
-
-### 6\.1 发布卡住、长时间更新不完
-
-**现象**：新Pod无法就绪、滚动更新停滞、新旧Pod并存
-
-**根因**：就绪探针失败、端口占用、配置错误、镜像缺失
-
-**排查命令**：
-
-```bash
-kubectl describe deploy api-service -n prod-api
-kubectl describe pod <异常pod> -n prod-api
-kubectl logs <异常pod> -n prod-api
-
-```
-
-### 6\.2 业务频繁重启
-
-**根因**：存活探针超时、OOM内存溢出、程序死锁、配置加载失败
-
-**处理**：查看容器退出日志、调整资源limit、优化探针参数、修复程序bug
-
-### 6\.3 离线环境镜像拉取失败
-
-**根因**：镜像未上传内网Harbor、镜像标签错误、imagePullPolicy配置不当
-
-**处理**：统一使用 `IfNotPresent`，提前预推镜像至离线仓库
-
-### 6\.4 发布后部分Pod就绪失败
-
-**根因**：ConfigMap/Secret挂载异常、初始化脚本失败、权限不足
-
-**处理**：核对配置文件完整性、目录权限、初始化命令
-
-## 7\. 生产红线（强制禁止）
-
-- 禁止生产无状态业务使用裸Pod、StatefulSet托管
-
-- 禁止生产Deployment不配置资源requests/limits，防止资源抢占
-
-- 禁止关闭探针、关闭优雅停机，导致发布报错、连接中断
-
-- 禁止暴力删除Deployment重建发布，必须使用滚动更新
-
-- 禁止生产发布开启 `maxUnavailable>0`，避免发布降级
-
-- 禁止离线环境使用 `Always` 镜像拉取策略，引发拉取失败
-
-## 8\. 关联实战文档
-
-- 滚动发布管理：`11-rollout-management.md`
-
-- 版本回滚实战：`12-rollback-management.md`
-
-- 工作负载排障：`15-workload-troubleshooting.md`
-
-- Pod生命周期与探针规范：`02-pod-lifecycle.md`
-
-> （注：部分内容可能由 AI 生成）
+## 十、关联文档
+1. 前置基础：`02-pod-lifecycle.md` 探针、优雅终止、Pod状态机制
+2. 资源管控：`07-resource-management.md` LimitRange & ResourceQuota
+3. 发布回滚汇总：`09-rollout-and-rollback.md` 完整发布流程规范
+4. 有状态对比：`04-stateful-workloads.md` StatefulSet适用场景区分
+5. 故障汇总：`10-workload-troubleshooting.md` Deployment更新卡死、Pod崩溃排错
