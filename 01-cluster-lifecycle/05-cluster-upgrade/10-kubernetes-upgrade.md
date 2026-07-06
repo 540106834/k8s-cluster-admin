@@ -291,4 +291,3 @@ systemctl restart kubelet
 
 - 节点日常管理：`worker-node-management.md`
 
-> （注：部分内容可能由 AI 生成）
