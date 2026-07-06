@@ -1,7 +1,10 @@
 # 05-kubeconfig-management/README.md
+
 ## 一、目录概述
+
 本目录独立管理集群 `kubeconfig` 全套配置、用户权限、证书分发、多集群、轮换、安全规范，配套前文部署文档（01~10全流程部署完成后运维使用）。
 集群基础信息：
+
 - K8s 版本：v1.32.13 单Master
 - Master节点：`k8s-master-01 / 192.168.11.161`
 - 私有仓库：`harbor.jinshaoyong.com/k8s`
@@ -9,8 +12,9 @@
 - CRI：containerd v2.1.5-1
 
 ## 二、文档分档功能说明
+
 | 文件 | 核心内容 |
-|------|--------|
+| ------ | -------- |
 | 01-kubeconfig-overview.md | kubeconfig 核心作用、集群认证逻辑、三种认证模式概述 |
 | 02-kubeconfig-structure.md | kubeconfig yaml三层结构：clusters / users / contexts 完整字段解析 |
 | 03-admin-conf.md | `/etc/kubernetes/admin.conf` 管理员配置来源、权限、拷贝到用户目录标准流程 |
@@ -28,11 +32,13 @@
 | 15-troubleshooting.md | kubeconfig连接失败、证书过期、权限不足、context错乱等故障排查 |
 
 ## 三、前置依赖
+
 1. `05-kubeadm-init.md` 集群初始化完成，Master存在 `/etc/kubernetes/admin.conf`
 2. `03-kubernetes-packages.md` 所有节点kubectl安装完成，bash-completion可用
 3. 集群网络Calico就绪，节点状态Ready
 
 ## 四、使用顺序建议（标准学习/操作流程）
+
 1. 01-overview → 02-structure 理解原理结构
 2. 03-admin-conf 管理员基础配置（必做）
 3. 日常运维：06上下文、07集群、08用户管理
@@ -44,6 +50,7 @@
 9. 异常处理：15故障排查
 
 ## 五、全局统一操作规范
+
 1. 所有kubeconfig文件统一存放目录：`/usr/local/src/kubeconfig/`
 2. 用户本地配置目录标准路径：`$HOME/.kube/config`
 3. 文件权限严格控制：`chmod 600 config`，禁止其他用户读取证书/Token
@@ -51,6 +58,7 @@
 5. 生产环境遵循最小权限，不直接分发admin.conf给普通运维人员
 
 ## 六、上下游文档关联
+
 - 上游：05-kubeadm-init.md（集群生成admin.conf）、07-worker-join.md（节点拷贝kubeconfig）
 - 配套运维：08-post-install.md RBAC账号管理
 - 故障兜底：10-troubleshooting.md 补充kubeconfig连接异常章节
