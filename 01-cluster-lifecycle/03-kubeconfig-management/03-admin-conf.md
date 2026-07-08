@@ -62,7 +62,7 @@ kubectl get nodes
 kubectl get cs
 ```
 
-## 五、Worker节点同步管理员配置（仅运维管理员使用）
+## 五、K8s管理节点同步管理员配置（仅运维管理员使用）
 
 ### 5.1 Master节点推送至Worker
 

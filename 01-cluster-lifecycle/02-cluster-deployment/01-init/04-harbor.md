@@ -1,5 +1,7 @@
 # 04-harbor.md
+
 ## 一、文档基础信息
+
 - 前置依赖：01-os-init.md、02-containerd.md 已全部节点完成
 - 执行节点：**harbor.jinshaoyong.com（192.168.11.170）**
 - 集群版本：Kubernetes v1.32.13
@@ -8,6 +10,7 @@
 - 下游文档：05-kubeadm-init.md
 
 ## 二、集群信息总览
+
 | 主机名 | IP | 角色 |
 |--------|----|------|
 | k8s-master-01 | 192.168.11.161 | 单控制面节点 |
@@ -16,6 +19,7 @@
 | harbor.jinshaoyong.com | 192.168.11.170 | 私有镜像仓库（已部署） |
 
 ## 三、前置校验（Harbor节点执行）
+
 ```bash
 # 1. Harbor容器全部正常运行
 cd /usr/local/src/harbor
@@ -29,7 +33,9 @@ curl -u admin:Harbor@123456 http://harbor.jinshaoyong.com/api/v2.0/projects/k8s
 ```
 
 ## 四、创建 k8s 公共项目（不存在时执行）
+
 ### 4.1 API 创建项目（一键脚本）
+
 ```bash
 curl -u admin:Harbor@123456 -X POST -H "Content-Type: application/json" \
 http://harbor.jinshaoyong.com/api/v2.0/projects \
@@ -39,8 +45,10 @@ http://harbor.jinshaoyong.com/api/v2.0/projects \
   "storage_limit": -1
 }'
 ```
+
 ### 配置说明
-1. `public: true`：集群所有节点无需账号密码即可拉取镜像，适配kubeadm初始化
+
+1. `public: true`：集群所有节点无需账号密码即可拉取镜像，适配kubeadm初始化(**`初始化时，k8s未有镜像拉取的账号，需要公开仓库才行`**)
 2. `storage_limit: -1`：不限制项目存储空间
 3. 项目名称固定 `k8s`，与kubeadm `imageRepository` 参数完全匹配
 

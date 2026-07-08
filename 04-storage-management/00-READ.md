@@ -1,6 +1,9 @@
 # 04-storage-management/00-README.md
+
 ## 一、文档基础信息
+
 ### 目录归属
+
 路径：`04-storage-management/`
 前置依赖：`02-workload-management/` 工作负载全套文档、`03-network-management/` 网络文档、集群初始化、containerd运行时
 集群基准：Kubernetes v1.32.13、CSI存储驱动、Local SSD/分布式存储、内网Harbor镜像仓库
@@ -8,10 +11,12 @@
 配套关联：`etcd-backup.md`、`cluster-migration.md`、`10-workload-troubleshooting.md`
 
 ### 模块核心定位
+
 集群存储是业务持久数据的底层载体，区分临时存储与持久化存储，本目录完整覆盖**PV/PVC静态存储、StorageClass CSI动态供给、卷扩容/快照、数据备份迁移、存储全链路故障排错**标准化运维规范。
 严格区分四层环境存储策略：DEV本地临时存储、FAT测试可自动清理、UAT预生产仿真生产存储规格、PROD生产高可靠持久化存储，对数据库、缓存、备份文件等核心数据做分级管控。
 
 ## 二、子文档功能总览
+
 | 文件名称 | 核心覆盖内容 |
 |--------|------------|
 | 01-persistent-volume.md | PV静态存储资源、生命周期、回收策略、访问模式、静态PV手工创建规范 |
@@ -22,14 +27,20 @@
 | 06-storage-troubleshooting.md | PV/PVC绑定失败、卷扩容报错、快照失效、Pod挂载失败、存储IO性能差、存储故障应急SOP |
 
 ## 三、核心存储分层理论认知
+
 ### 3.1 临时非持久存储（禁止存放业务数据）
+
 1. emptyDir：Pod销毁数据直接删除，FAT临时缓存、日志中转使用；
 2. hostPath：宿主机目录挂载，仅DaemonSet采集组件使用，业务Pod禁止挂载根目录；
+
 ### 3.2 持久化存储（业务核心数据唯一载体）
+
 1. 静态PV：管理员提前创建固定存储卷，PVC静态绑定；
 2. 动态供给StorageClass：PVC自动触发CSI创建PV，生产主流方案；
 3. StatefulSet专属volumeClaimTemplates：每个Pod自动生成独立PVC，一一绑定PV；
+
 ### 3.3 存储三层联动关系
+
 StorageClass → PV（动态/静态） ← PVC → Pod VolumeMount
 
 ## 四、PV访问模式与回收策略统一规范

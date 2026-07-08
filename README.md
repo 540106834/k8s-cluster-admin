@@ -37,7 +37,8 @@ kubernetes-cluster-admin/
 ├── 07-resource-management.md         # ResourceQuota、LimitRange 资源配额与限制
 ├── 08-workload-scaling.md            # 手动扩缩容、HPA 自动伸缩
 ├── 09-rollout-and-rollback.md        # 发布、更新、暂停、恢复、回滚与重启
-└── 10-workload-troubleshooting.md    # 工作负载故障诊断与常见问题排查
+├──10-workload-troubleshooting.md    # 工作负载故障诊断与常见问题排查
+├──11-configuration-management.md
 │
 03-network-management/
 ├── 00-README.md                     # 集群网络管理总览
@@ -124,49 +125,36 @@ kubernetes-cluster-admin/
 ├── 09-backup-and-disaster-recovery.md # 云备份、快照、跨地域容灾
 ├── 10-cost-optimization.md          # 成本优化（节点、存储、网络）
 └── 11-multi-cloud-comparison.md     # ACK、EKS、GKE、AKS 对比
+│
+09-cluster-addons/
+├── 00-README.md                     # Kubernetes Add-ons 总览与生产组件体系
+├── 01-core-dns.md                   # CoreDNS 服务发现、解析流程与配置管理
+├── 02-metrics-server.md             # Metrics Server 资源指标采集与 HPA 数据来源
+├── 03-ingress-controller.md         # Ingress Controller 部署、路由、TLS 与流量入口
+├── 04-cert-manager.md               # 自动证书管理、ACME、Certificate 生命周期
+├── 05-csi-driver.md                 # CSI 驱动、云存储插件与动态供给
+├── 06-snapshot-controller.md        # VolumeSnapshot 快照管理与恢复流程
+├── 07-monitoring-stack.md           # Prometheus Operator、ServiceMonitor、Alertmanager
+├── 08-logging-stack.md              # Fluent Bit、Loki、Elasticsearch 日志体系
+├── 09-policy-engine.md              # Kyverno、OPA Gatekeeper 策略管理
+├── 10-autoscaling-components.md     # HPA、VPA、Cluster Autoscaler、Karpenter
+├── 11-dashboard-and-tools.md        # Dashboard、Lens、kubectl 插件等管理工具
+└── 12-addon-upgrade-management.md   # Add-on 生命周期、升级、兼容性管理
+│
+10-extension-management/
+├── 00-README.md                     # Kubernetes 扩展机制总览
+├── 01-crd-management.md             # CRD 定义、注册、版本管理
+├── 02-custom-resource.md            # 自定义资源 CR 使用与生命周期
+├── 03-controller-pattern.md         # Controller 控制循环与状态收敛模型
+├── 04-operator-pattern.md           # Operator 模式与 Kubernetes 原生扩展
+├── 05-operator-installation.md      # Operator 安装、升级与卸载管理
+├── 06-operator-lifecycle.md         # Operator 生命周期管理
+├── 07-admission-webhook.md          # Validating/Mutating Webhook 扩展机制
+├── 08-api-extension.md              # Kubernetes API Extension 机制
+├── 09-platform-crd-design.md       # 平台工程中的 CRD 设计实践
+├── 10-gitops-integration.md         # ArgoCD、Flux 与声明式交付
+└── 11-extension-troubleshooting.md  # CRD、Operator、Webhook 故障排查
+
+
 ```
 
----
-
-## 我建议再增加一个目录（非常重要）
-
-建议放在 **L2 最后一章**：
-
-```text
-08-managed-kubernetes/
-```
-
-里面全部都是**云 K8s**。
-
-```text
-README.md
-
-managed-control-plane.md      # 托管 Control Plane
-
-node-pools.md                 # Node Pool
-
-cloud-loadbalancer.md         # 云 LB
-
-cloud-storage.md              # 云盘
-
-cloud-network.md              # VPC
-
-iam-integration.md            # IAM
-
-cluster-upgrade.md            # 云集群升级
-
-disaster-recovery.md          # 云容灾
-```
-
-**原因很简单：**
-
-你现在这套目录有 **95% 是所有 Kubernetes 都通用的**。
-
-真正体现"企业生产环境"的，就是最后这一章。
-
-这样整套知识体系就变成：
-
-* **01~07**：任何 Kubernetes 都适用（通用能力）。
-* **08**：托管 Kubernetes（ACK、EKS、GKE、AKS、CCE 等）的生产实践。
-
-这也是目前企业最符合实际的知识组织方式。

@@ -45,10 +45,12 @@ ping -c 4 harbor.jinshaoyong.com
 ## 四、DEB离线包安装 Containerd v2.1.5-1（推荐Ubuntu生产标准方式）
 
 **全局环境关键限制**：现场环境全部外网Github资源、Harbor HTTPS网页解析报错：
+
 1. **Github全量链接解析失败**：runc、crictl、cni-plugins Github外网URL均网页解析失败；
 2. **Harbor管理页面访问报错**：URL https://192.168.11.170 拼写/解析异常，网页无法打开；
    
 ✅ 统一执行规范：
+
 1. containerd v2.1.5-1：离线DEB包安装
 2. runc、crictl、CNI网络插件：优先wget命令部署，解析失败直接本地离线上传文件兜底
 3. Harbor仅内网容器镜像通信、忽略前端管理页面访问报错
