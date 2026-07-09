@@ -1,5 +1,7 @@
 # 01-kubernetes-network-model.md
+
 ## 一、文档基础信息
+
 - 归属目录：`03-network-management/`
 - 前置阅读：`03-network-management/00-README.md`、`02-workload-management/02-pod-lifecycle.md`
 - 集群基准：Kubernetes v1.32.13、Calico v3.30.4、containerd 2.1.5、内网Harbor镜像仓库
@@ -7,7 +9,9 @@
 - 核心覆盖：K8s标准网络模型、四大通信场景、网段分层规划、多环境网段隔离、网络底层约束、落地规范
 
 ## 二、K8s 强制网络模型（CNI 统一遵循准则）
+
 ### 2.1 四大网络公理（所有CNI插件必须满足）
+
 1. **所有Pod之间无需NAT可直接互通**，同节点/跨节点无区别；
 2. **Pod与节点可直接互通**，Pod访问宿主机IP、宿主机访问PodIP无拦截；
 3. **Pod访问Service虚拟IP不允许使用NAT**，kube-proxy转发逻辑透明；
