@@ -3,6 +3,24 @@
 ## 1. 核心定位与整体架构
 
 **Grafana 只负责展示与告警，不采集、不存储时序数据**，通过数据源查询外部时序/日志/业务数据，实现可视化与告警闭环。
+```
+Grafana Dashboard
+
+├── 1. 基础设施层 Infrastructure
+│
+├── 2. Kubernetes平台层
+│
+├── 3. 应用层 Application
+│
+├── 4. 中间件层 Middleware
+│
+├── 5. 数据库层 Database
+│
+├── 6. 网络层 Network
+│
+└── 7. 业务指标层 Business
+```
+
 
 ### 标准基础架构
 
@@ -60,16 +78,13 @@ Grafana → PromQL → Prometheus HTTP API → 时序数据库
 
 ### 3.2 Node 节点监控
 
-核心指标：CPU、内存、磁盘、网络吞吐
-
+核心指标：CPU、内存、磁盘、网络吞吐  
 核心指标名：`node_cpu_seconds_total`、`node_memory_*`、`node_filesystem_*`、`node_network_*_bytes_total`
 
 ### 3.3 K8s 资源监控
 
 - Deployment：`kube_deployment_status_replicas`
-
 - Pod 状态：`kube_pod_status_phase`
-
 - 容器CPU使用率（按Pod聚合）：
 
 ```Plain Text
@@ -129,9 +144,7 @@ Prometheus Operator 统一管理
 ### 核心联动机制
 
 - **ServiceMonitor**：自动发现K8s监控目标，无需手动改Prometheus配置
-
 - **PrometheusRule**：声明式统一管理告警规则
-
 - **Dashboard ConfigMap**：Grafana Sidecar 自动加载大盘，禁止手动导入
 
 ## 7. Dashboard 自动化交付（生产标准）
@@ -168,9 +181,7 @@ Organization(组织) → Folder(目录) → Dashboard(细粒度权限)
 ### 角色划分
 
 - 开发：Viewer（只读查看）
-
 - 运维：Editor（编辑大盘/规则）
-
 - 管理员：Admin（全量权限）
 
 ## 9. 高可用架构（生产必备）
@@ -195,8 +206,7 @@ LB负载均衡
 
 禁止短时间范围计算，避免Prometheus压力过大
 
-❌ 不推荐：`rate(metric[1s])`
-
+❌ 不推荐：`rate(metric[1s])`   
 ✅ 推荐：`rate(metric[5m])`
 
 ### 10.2 Recording Rule 预计算优化
@@ -240,8 +250,6 @@ Exporter采集指标
 ↓ 企业微信/钉钉/Webhook通知
 ```
 
-## 核心技术栈速览（面试复盘）
+## 核心技术栈速览（复盘）
 
 DataSource、Dashboard、Variable、PromQL、RecordingRule、AlertRule、ContactPoint、Sidecar自动加载、ConfigMap部署、LDAP/OIDC权限、kube-prometheus-stack、ServiceMonitor、Thanos多集群架构
-
-> （注：部分内容可能由 AI 生成）
