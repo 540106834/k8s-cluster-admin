@@ -64,6 +64,10 @@ kubeadm token create --print-join-command
 ```bash
 kubeadm join 192.168.11.161:6443 --token abcdef.0123456789abcdef \
   --discovery-token-ca-cert-hash sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+kubeadm join 192.168.11.161:6443 \
+        --token doh97y.y0f3hrtterwvrokv \
+        --discovery-token-ca-cert-hash sha256:94d7b6d5c9dbcc7a172e88ed13989d541cf8b9bcda35e626425d1f6c624b7d7f
 ```
 
 ### 4.3 备用：仅已知hash，手动创建临时token
