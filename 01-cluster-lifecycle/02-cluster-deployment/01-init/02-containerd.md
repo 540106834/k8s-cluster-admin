@@ -60,7 +60,7 @@ ping -c 4 harbor.jinshaoyong.com
 将以下4个deb安装包，本地下好后上传所有K8s节点服务器：`/usr/local/src/containerd-deb/` 目录
 - containerd_2.1.5-1_amd64.deb （唯一离线DEB安装包，仅安装containerd主程序）
 - 无需上传 runc、crictl 安装包：优先服务器wget下载，下载失败再本地离线上传兜底
-- 取消cni-plugins DEB安装：改用用户指定wget二进制部署方式
+- 取消cni-plugins DEB安装：改用用户指定wget二进制部署方式（可选）
 
 ### 4.2 执行离线批量安装（全节点复制执行）
 

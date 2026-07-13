@@ -12,6 +12,35 @@
   2. YAML配置文件标准化初始化（生产推荐）
 - 下游文档：06-cni-calico.md
 
+```bash
+① 启动 containerd
+        │
+        ▼
+② kubelet 启动
+        │
+        ▼
+③ kubeadm init
+        │
+        ▼
+④ 启动控制平面静态 Pod
+   ├── kube-apiserver
+   ├── kube-controller-manager
+   ├── kube-scheduler
+   └── etcd
+        │
+        ▼
+⑤ API Server 可用
+        │
+        ▼
+⑥ 安装 CNI（Calico/Cilium...）
+        │
+        ▼
+⑦ CoreDNS Running
+        │
+        ▼
+⑧ Node Ready
+```
+
 ## 二、集群全局网段规划
 
 | 网段 | 用途 |

@@ -84,6 +84,7 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 | 4789 | UDP | Calico IPIP隧道 |
 
 ### 5.2 Worker节点入站端口
+
 | 端口 | 协议 | 用途 |
 |------|------|------|
 | 10250 | TCP | kubelet |
@@ -92,9 +93,11 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 | 30000-32767 | TCP/UDP | NodePort业务端口 |
 
 ### 5.3 Harbor节点端口
+
 - 80/443：仓库页面与镜像推拉
 
 ## 六、系统目录标准化规划（全节点统一）
+
 ```
 # 部署源码、离线包、yaml清单统一存放
 /usr/local/src/
@@ -119,6 +122,7 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 ```
 
 ## 七、软件版本锁定规划（全局统一标准）
+
 1. OS：Ubuntu 22.04 LTS
 2. Kubernetes：v1.32.13（全组件kubeadm/kubelet/kubectl版本对齐）
 3. containerd：2.1.5
@@ -130,24 +134,30 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 9. Harbor：稳定生产版（镜像仓库独立维护）
 
 ## 八、存储规划
+
 ### 8.1 控制平面etcd
+
 - 存储路径：`/var/lib/etcd`
 - 要求：SSD，独立磁盘最佳，禁止共享系统盘
 - 备份策略：每日定时快照存放 `/usr/local/src/etcd-backup/`，保留7天快照
 
 ### 8.2 Containerd镜像存储
+
 路径：`/var/lib/containerd`
 磁盘阈值预警：占用80%执行镜像清理+Harbor垃圾回收
 
 ### 8.3 Harbor镜像存储
+
 独立数据盘挂载，定期清理废弃Tag、执行registry垃圾回收释放空间
 
 ## 九、集群调度与污点规划
+
 1. 单Master集群：部署完成后移除control-plane NoSchedule污点，允许业务调度至master节点
 2. 无专用存储节点，业务PV使用本地存储/后续扩展存储类
 3. 资源保护：全局LimitRange限制容器默认CPU/内存，防止节点资源耗尽
 
 ## 十、认证与权限规划
+
 1. APIServer认证：客户端证书为主，ServiceAccount Token用于集群内部组件
 2. 权限分层：
    - admin.conf：cluster-admin 最高权限（仅管理员）
@@ -156,11 +166,13 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 3. kubeconfig文件权限强制600，禁止明文对外分发
 
 ## 十一、集群扩容规划
+
 1. Worker节点横向扩容：新增节点仅执行系统初始化+containerd+k8s deb包，kubeadm join加入集群
 2. 镜像扩容：Harbor扩容磁盘，新增镜像项目隔离业务/系统镜像
 3. 控制平面扩容（后期升级高可用）：新增master节点，etcd集群扩展三节点
 
 ## 十二、安全规划前置标准
+
 1. 全节点永久关闭swap
 2. 内核转发参数统一开启iptables bridge转发
 3. Harbor内网仓库跳过tls校验，不对外暴露
@@ -168,6 +180,7 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 5. 禁用节点防火墙公网暴露端口，仅内网192.168.11.0/24放行集群端口
 
 ## 十三、部署流程对应关系
+
 1. 本规划文档为**所有部署操作前置依据**
 2. 01-os-init.md：落地系统网段、hosts、内核、目录规划
 3. 02-containerd.md：落地CRI目录、镜像仓库规划
@@ -177,6 +190,7 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 7. 05-kubeconfig-management/：落地权限、kubeconfig分发规划
 
 ## 十四、验收核对清单（部署前确认）
+
 - [ ] 节点IP、主机名、hosts统一规划无冲突
 - [ ] Pod/Service/主机三段网段完全隔离不重叠
 - [ ] 硬件资源满足最低配置标准
@@ -184,3 +198,4 @@ DNS：内网DNS / 公共DNS 223.5.5.5
 - [ ] 存储目录、备份路径标准化定义
 - [ ] 防火墙端口放行清单确认
 - [ ] 权限分层、证书认证方案确认
+  
