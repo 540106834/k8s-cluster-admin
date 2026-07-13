@@ -150,11 +150,14 @@ kubectl scale deploy api-server --replicas=3 -n prod
 > 规范：长期副本调整优先修改yaml文件apply，scale仅临时应急。
 
 ### 5.4 镜像版本迭代发布
+
 #### 方式1：命令行快速更新镜像
+
 ```bash
 kubectl set image deploy api-server api-server=harbor.jinshaoyong.com/k8s/api-server:v1.0.1 -n prod
 ```
 #### 方式2：修改yaml文件apply（版本管理推荐）
+
 修改spec.template.spec.containers.image字段后执行 `kubectl apply -f`。
 
 ### 5.5 观察滚动更新进度

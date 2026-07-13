@@ -1,251 +1,232 @@
-# 03-worker-node-management/06-kubelet-runtime.md
-## 文档元信息
-归属模块：Worker 节点管理
-前置依赖：01-node-basics.md、05-node-troubleshooting.md
-关联文档：08-resource-pressure.md、09-node-hardening.md
-适用运行时：containerd 2.x（集群统一标准）
-定位：kubelet + containerd 配置、故障、调优、排障完整手册
+# 03‑worker‑node‑management/06‑kubelet‑runtime.md
+## 一、文档基础信息
+- 文件路径：`03‑worker‑node‑management/06‑kubelet‑runtime.md`
+- 前置文档：`00‑overview.md`、`01‑node‑basics.md`、`05‑node‑troubleshooting.md`、`08‑resource‑pressure.md`
+- 集群基准：Kubernetes‑1.32.13、containerd‑2.1.5，Lease心跳、PLEG机制、systemd cgroup驱动，Ubuntu‑22.04，离线内网环境。
+- 适用环境：DEV / FAT / UAT / PROD
+- 文档内容：kubelet整体工作原理、配置文件解析、PLEG核心机制、容器镜像GC策略、探针执行逻辑、kubelet‑CRI交互、kubelet性能调优、日志配置、常见报错、生产参数最佳配置。
 
-# 一、架构基础
-## 1.1 组件调用链路
-kubelet → CRI（/run/containerd/containerd.sock）→ containerd → runc → OCI容器
-- kubelet：对接APIServer，管理Pod生命周期、资源驱逐、调度校验
-- containerd：CRI标准运行时，镜像管理、sandbox/容器创建、日志转发
-- runc：OCI底层，cgroup/namespace隔离、权限管控
+## 二、kubelet整体工作原理
+### 2.1 kubelet核心职责
+1. 定期向apiserver获取本节点Pod清单；
+2. 通过CRI接口调用containerd创建sandbox和业务容器；
+3. 执行 startupProbe、livenessProbe、readinessProbe；探针失败按照策略重启容器；
+4. 运行PLEG(Pod Lifecycle Event Generator)监听容器状态变化；上报Pod状态给apiserver；
+5. 每10s更新Lease资源维持节点心跳；上报节点4种状态（Ready、MemoryPressure、DiskPressure、PIDPressure）；
+6. 判断系统资源压力，按照QoS优先级驱逐Pod；
+7. 执行镜像垃圾回收、容器清理；管理本地secret/configmap。
 
-## 1.2 核心目录路径（生产固定）
-```
-# containerd 主配置
-/etc/containerd/config.toml
-# containerd socket
-/run/containerd/containerd.sock
-# 容器镜像/容器数据存储
-/var/lib/containerd
-# kubelet 主配置
-/var/lib/kubelet/config.yaml
-# kubelet 工作目录
-/var/lib/kubelet
-# kubelet 证书
-/var/lib/kubelet/pki/
-# 容器日志持久化目录
-/var/log/containers
-# cgroup 挂载标准
-/sys/fs/cgroup
-```
+### 2.2 kubelet配置文件加载顺序
+1. 启动参数：`/var/lib/kubelet/config.yaml`（核心配置文件）；
+2. kubelet启动参数文件：`/var/lib/kubelet/kubeadm‑flags.env`，由kubeadm生成；
+3. 动态配置（可选）：kubelet‑config ConfigMap，开启动态配置后可以不用重启kubelet生效配置；
+4. systemd启动单元：`/lib/systemd/system/kubelet.service`，只设置exec启动命令。
 
-# 二、containerd 标准配置解析
-## 2.1 生成默认配置模板
-```bash
-containerd config default > /etc/containerd/config.toml
-systemctl restart containerd
-```
-## 2.2 生产必改关键项
-### 1）cgroup驱动统一（与kubelet对齐）
-```toml
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-  SystemdCgroup = true
-```
-> 不匹配会直接导致kubelet启动失败、Pod创建报错。
+> 生产环境：统一使用静态配置文件，不开启动态配置避免配置漂移。
 
-### 2）镜像加速/私有仓库（Harbor内网）
-```toml
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."harbor.internal.com"]
-  endpoint = ["https://harbor.internal.com"]
-```
-私有仓库证书存放目录：`/etc/containerd/certs.d/域名/`
+### 2.3 kubelet与CRI交互流程
+1. kubelet通过unix‑socket `/run/containerd/containerd.sock` 和 containerd通信；
+2. 流程：kubelet下发CreatePodSandbox → 创建pause容器 → 创建业务容器；
+3. containerd再调用runc启动容器进程；
+4. kubelet通过CRI接口获取容器PID、状态、资源占用。
 
-### 3）日志驱动配置
-```toml
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-  LogDriver = "json-file"
-[plugins."io.containerd.grpc.v1.cri"]
-  max_log_size = "50Mi"
-  max_log_files = 3
-```
-限制单容器日志大小，防止磁盘打满触发DiskPressure。
+## 三、kubelet核心组件‑PLEG（重点）
+### 3.1 PLEG工作机制
+1. PLEG周期性读取containerd容器状态，生成Pod生命周期事件（启动、退出、删除）；
+2. 默认遍历间隔1s；正常PLEG relist间隔应当小于500ms；
+3. 当磁盘IO压力过大、容器数量过多时，`PLEG relist interval >1s`；
+4. PLEG延迟过高会引发连锁问题：
+   - Pod状态上报延迟；探针执行滞后；
+   - kubelet工作队列堆积；严重会导致节点NotReady。
 
-### 4）sandbox pause镜像统一
-```toml
-[plugins."io.containerd.grpc.v1.cri"]
-  sandbox_image = "harbor.internal.com/k8s/pause:3.9"
-```
+### 3.2 造成PLEG延迟过高的原因（生产高频）
+1. 磁盘iowait很高（磁盘性能不足，SSD故障，大量日志写入）；
+2. 节点运行Pod数量过多（几百个容器）；
+3. inotify资源不足；
+4. containerd版本BUG（旧版本问题多，生产锁定 containerd‑2.1.5）。
+### 优化方案
+1. 底层更换高速SSD存储；
+2. 拆分Pod分散到更多节点，减少单节点容器数量；
+3. 调高内核inotify参数：
+    ```bash
+    fs.inotify.max_user_watches=524288
+    fs.inotify.max_user_instances=8192
+    ```
+4. 升级containerd‑2.1.5稳定版。
 
-## 2.3 containerd 服务启停与状态
-```bash
-# 状态查看
-systemctl status containerd
-# 重启重载配置
-systemctl restart containerd
-# 实时日志
-journalctl -u containerd -f --since "10m"
-# 版本校验
-ctr version
-crictl version
-```
-
-# 三、kubelet 核心配置与参数
-## 3.1 kubelet 核心配置文件：/var/lib/kubelet/config.yaml
-### 关键配置项说明
-1. `cgroupDriver: systemd`
-必须与containerd保持一致，否则节点NotReady。
-2. `evictionHard`
-资源驱逐硬阈值，详见 08-resource-pressure.md
-3. `systemReserved` / `kubeReserved`
-宿主机系统与kube组件预留资源，降低业务抢占内核资源风险
-4. `imageGCHighThresholdPercent` / `imageGCLowThresholdPercent`
-镜像垃圾回收水位，自动清理闲置镜像
-5. `serializeImagePulls: false`
-并行拉取镜像，加速多镜像Pod启动
-
-## 3.2 kubelet 系统服务文件
-路径：`/lib/systemd/system/kubelet.service.d/10-kubeadm.conf`
-常用启动参数：
-```
---container-runtime=remote
---container-runtime-endpoint=unix:///run/containerd/containerd.sock
---kubeconfig=/var/lib/kubelet/kubeconfig
---node-ip=节点内网IP
-```
-
-## 3.3 kubelet 运维命令
-```bash
-# 服务重启
-systemctl restart kubelet
-# 实时日志
-journalctl -u kubelet -f
-# 校验配置合法性
-kubelet --config /var/lib/kubelet/config.yaml -v4
-# 查看kubelet识别的节点资源
-kubectl describe node $NODE
-```
-
-# 四、crictl 运行时调试工具（替代docker命令）
-## 4.1 环境变量（永久写入/etc/profile）
-```bash
-export CONTAINER_RUNTIME_ENDPOINT=unix:///run/containerd/containerd.sock
-export IMAGE_SERVICE_ENDPOINT=unix:///run/containerd/containerd.sock
-```
-
-## 4.2 高频运维命令
-```bash
-# 查看运行中容器
-crictl ps
-# 查看所有容器（含停止）
-crictl ps -a
-# 查看pod sandbox
-crictl pods
-# 拉取镜像
-crictl pull harbor.internal.com/xxx:v1
-# 删除镜像
-crictl rmi <image-id>
-# 清理无用镜像
-crictl images prune
-# 进入容器
-crictl exec -it <container-id> /bin/sh
-# 查看容器日志
-crictl logs <container-id>
-# 容器资源统计
-crictl stats
-```
-
-# 五、高频故障分类与排查方案
-## 5.1 故障1：kubelet 启动失败，报错 cgroup driver mismatch
-### 现象
-kubelet日志：`cgroup driver: cgroupfs, expected systemd`
-### 根因
-containerd SystemdCgroup=false，kubelet配置为systemd，两端不统一
-### 修复
-1. 修改 `/etc/containerd/config.toml` SystemdCgroup = true
-2. `systemctl restart containerd kubelet`
-
-## 5.2 故障2：cri socket 连接失败
-### 日志关键词
-`failed to connect containerd.sock: connection refused`
-### 排查步骤
-1. 检查socket文件是否存在：`ls /run/containerd/containerd.sock`
-2. 检查containerd是否running：`systemctl status containerd`
-3. 权限修复：`chmod 666 /run/containerd/containerd.sock`
-4. 重启containerd重建socket
-
-## 5.3 故障3：镜像拉取失败（tls/域名/证书）
-### 报错
-`x509: certificate signed by unknown authority`
-### 修复流程
-1. 在 `/etc/containerd/certs.d/仓库域名/` 放置ca.crt
-2. 配置对应registry mirrors
-3. 重启containerd，测试拉取 `crictl pull xxx`
-
-## 5.4 故障4：Pod创建失败，sandbox无法启动
-### 关键词
-`failed to create sandbox`、`pause image pull failed`
-### 根因
-1. pause镜像地址错误/无法拉取
-2. cgroup挂载异常
-3. iptables/nftables被清空，CNI未就绪
-### 修复
-1. 修改config.toml sandbox_image为内网pause镜像
-2. 检查cgroup挂载 `mount | grep cgroup`
-3. 重启calico-node/cilium-agent
-
-## 5.5 故障5：容器日志持续打满磁盘触发DiskPressure
-### 根因
-容器未配置日志轮转，单容器日志数十GB
-### 临时处理
-```bash
-# 截断超大日志
-truncate -s 0 /var/log/containers/*.log
-# 清理停止容器释放空间
-crictl rm $(crictl ps -a -q)
-```
-### 永久优化
-配置containerd日志max_log_size、max_log_files，见2.2章节
-
-## 5.6 故障6：kubelet 频繁重启、证书过期
-### 日志关键词
-`x509: certificate has expired or is not yet valid`
-### 修复
-1. 控制平面执行证书续期 `kubeadm certs renew all`
-2. 节点重新join或同步kubelet pki证书
-3. 同步节点时间 `chronyc tracking`
-
-# 六、生产调优最佳实践
-## 6.1 containerd 性能调优
-1. 开启并行镜像拉取，关闭serializeImagePulls
-2. 镜像存储目录挂载独立高速SSD分区
-3. 限制并发容器创建数量，避免瞬间IO打满
-4. 配置镜像自动GC阈值，定期清理废弃镜像
-
-## 6.2 kubelet 资源预留调优
-示例配置（8C16G节点）：
+## 四、kubelet镜像GC（垃圾回收机制）
+### 4.1 GC触发条件（两个条件任一满足就执行）
 ```yaml
-systemReserved:
-  cpu: "500m"
-  memory: "1Gi"
-kubeReserved:
-  cpu: "500m"
-  memory: "1Gi"
+imageGCHighThresholdPercent: 85 #磁盘使用率达到85%触发GC
+imageGCLowThresholdPercent: 80  #GC之后降到80%停止清理
 ```
-预留资源避免内核/运行时被业务Pod抢占导致节点失联。
+1. 磁盘占用 ≥85%，自动清理镜像；
+2. 镜像清理顺序：先删除未使用镜像，再删除旧版本镜像。
 
-## 6.3 安全调优（联动09-node-hardening.md）
-1. 禁止容器特权运行，PodSecurityPolicy/PSP替换为PodSecurityStandard
-2. containerd限制容器挂载宿主机敏感目录
-3. 限制容器文件句柄、进程数ulimit
-4. 私有仓库强制TLS，禁止http明文拉取镜像
+### 4.2 容器GC
+```yaml
+minimumAge: 0
+maxPerPodContainer: 1
+maxContainers: 100
+```
+- 每个Pod最多保留1个停止后的容器；整个节点最多保留100个停止容器；多余的停止容器被自动清理。
 
-# 七、标准化巡检清单
-每次节点巡检必执行：
-1. containerd、kubelet 服务running无报错
-2. cgroup驱动两端统一systemd
-3. 私有仓库证书完整，镜像拉取正常
-4. 日志轮转参数已配置，无超大容器日志
-5. 镜像GC阈值配置合理，闲置镜像定期清理
-6. kubelet资源预留配置生效
-7. crictl pods/ps无大量异常终止sandbox/容器
+### 生产注意事项
+1. kubelet GC只清理镜像和停止容器；不会清理宿主机日志文件；`/var/log/containers`日志堆积会造成Disk‑Pressure；
+2. 生产配合log‑rotate或者filebeat轮转容器日志。
 
-# 八、文档关联跳转
-- 节点基础状态查看：01-node-basics.md
-- 节点整体故障排查：05-node-troubleshooting.md
-- 资源压力与驱逐阈值：08-resource-pressure.md
-- 节点安全加固：09-node-hardening.md
-- 事故处理手册：10-runbooks.md
+## 五、资源压力驱逐配置（和08‑resource‑pressure.md配套）
+kubelet配置文件中压力阈值（生产默认值）
+```yaml
+evictionHard:
+  memory.available: 100Mi
+  nodefs.available: 10%
+  nodefs.inodesFree: 5%
+  imagefs.available: 15%
+  imagefs.inodesFree: 5%
+evictionSoft: #软驱逐，配合宽限期eviction‑soft‑grace‑period
+  memory.available: 200Mi
+```
+1. 达到evictionHard阈值立刻触发驱逐；
+2. 驱逐顺序严格按照QoS：Best‑Effort > Burstable > Guaranteed；
+3. 驱逐完成后节点标记MemoryPressure / Disk‑Pressure。
+
+## 六、探针（Probe）执行逻辑（kubelet负责执行）
+kubelet负责执行三种探针：
+1. startupProbe：启动探针，启动期间关闭liveness探针；解决应用启动慢问题；
+2. livenessProbe：存活探针，失败则删除Pod，控制器重建；
+3. readinessProbe：就绪探针，失败会把Pod从Service的Endpoint剔除；流量不再转发到该Pod。
+> 探针支持：exec、httpGet、tcpSocket、grpc；探测请求由kubelet发起。
+
+## 七、kubelet‑config.yaml 生产标准配置示例（精简核心字段）
+```yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# 1.基础配置
+rootDirectory: /var/lib/kubelet
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+authorization:
+  mode: Webhook
+# 2.cgroup驱动，生产必须为systemd
+cgroupDriver: systemd
+# 3.资源驱逐配置
+evictionHard:
+  memory.available: 100Mi
+  nodefs.available: 10%
+  nodefs.inodesFree: 5%
+  imagefs.available: 15%
+#4.镜像GC配置
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 80
+#5.Pod最大数量
+maxPods: 250
+#6.Lease续约配置
+nodeLeaseDurationSeconds: 40
+#7.PLEG刷新周期
+podPLEGRelistPeriod: 1s
+#8.日志配置
+containerLogMaxSize: 50Mi
+containerLogMaxFiles: 5
+```
+> 配置修改后执行：`systemctl restart kubelet`生效。
+
+## 八、kubelet日志查看方式
+### 8.1 systemd日志查看（主流）
+```bash
+#实时日志
+journalctl -u kubelet -f
+#查看最近1000行
+journalctl -u kubelet -n 1000
+#只看错误日志
+journalctl -u kubelet | grep -i error
+#导出日志用于故障分析
+journalctl -u kubelet > kubelet-$(date +%Y%m%d).log
+```
+### 8.2 日志轮转配置
+kubelet配置：每个容器日志文件最大50Mi，保留5份；超出自动切割；
+容器日志目录：`/var/log/containers`，由containerd输出日志。
+
+## 九、高频故障问题分析
+### 问题1：kubelet频繁重启
+1. 防火墙阻断6443端口，kubelet无法连接apiserver；
+2. chronyd时间偏差过大，Lease续约失败；
+3. `/var/lib/kubelet/config.yaml`权限不是600；
+4. containerd服务异常，crictl超时；
+5. 内核OOM‑kill把kubelet进程杀掉（dmesg查看）。
+
+### 问题2：kubelet上报节点NotReady
+1. Disk‑Pressure、Memory‑Pressure开启；
+2. PLEG延迟过高；
+3. containerd挂掉，CRI通信失败。
+
+### 问题3：kubelet日志大量报错：too many open files
+修改systemd配置文件：`/lib/systemd/system/kubelet.service`
+```ini
+[Service]
+LimitNOFILE=65535
+```
+执行：
+```bash
+systemctl daemon-reload
+systemctl restart kubelet
+```
+
+### 问题4：kubelet‑config.yaml修改不生效
+1. 修改配置后必须重启kubelet；
+2. 确认kubeadm‑flags.env没有覆盖参数。
+
+### 问题5：镜像GC不执行
+1. 磁盘使用率未达到85%阈值；
+2. inodes耗尽优先触发Pressure，GC被阻塞。
+
+## 十、生产环境性能调优清单
+1. cgroup‑driver固定为systemd，禁止cgroupfs；
+2. 调高系统inotify、nofile内核参数；
+3. maxPods=250控制单节点Pod数量，避免PLEG延迟；
+4. containerd版本固定为2.1.5；
+5. 磁盘选用SSD，iowait指标纳入Prometheus告警；
+6. kubelet开启日志轮转，限制日志文件大小；
+7. node‑exporter监控PLEG延迟，PLEG>800ms触发告警。
+
+## 十一、DEV / FAT / UAT / PROD差异化标准
+1. DEV：无需严格调优，maxPods可以设置更大；日志不做严格限制；
+2. FAT：内核参数对齐生产；containerd版本统一2.1.5；PLEG超过1s人工排查；
+3. UAT：复用生产kubelet配置；禁止白天重启kubelet；
+4. PROD（强制约束）
+    1. cgroup‑driver必须为systemd，配置文件权限600；
+    2. PLEG relist间隔＞800ms触发告警；
+    3. kubelet重启操作仅凌晨业务低峰窗口执行；
+    4. 定期检查容器日志目录，避免日志堆积触发DiskPressure；
+    5. 禁止随意修改evictionHard驱逐阈值，修改必须走工单审批。
+
+## 十二、常用命令汇总
+```bash
+#查看kubelet配置
+cat /var/lib/kubelet/config.yaml
+
+#查看kubelet运行状态
+systemctl status kubelet
+
+#查看kubelet实时日志
+journalctl -u kubelet -f
+
+#重启kubelet
+systemctl restart kubelet
+
+#查看PLEG延迟（在kubelet日志中查看）
+journalctl -u kubelet | grep "PLEG relist interval"
+
+#查看CRI连通性
+crictl info
+```
+
+## 十三、关联文档
+1. `01‑node‑basics.md`：Lease续约机制；
+2. `08‑resource‑pressure.md`：驱逐机制、QoS等级；
+3. `05‑node‑troubleshooting.md`：节点Not‑Ready排障；
+4. `09‑node‑hardening.md`：系统内核参数加固；
+5. `07‑monitoring‑and‑troubleshooting`：kubelet指标与Prometheus告警配置。

@@ -1,19 +1,37 @@
 # 01-namespace-management.md
+
 ## 一、文档基础信息
+
 - 归属目录：`02-workload-management/`
 - 前置阅读：`02-workload-management/00-README.md`
 - 集群环境：Kubernetes v1.32.13 单Master集群，内网Harbor镜像仓库
 - 核心范围：Namespace原理、生命周期管理、资源配额、四层环境隔离规范、清理回收、安全规范、故障排查
 
 ## 二、Namespace 底层原理
+
 ### 2.1 定义
-Namespace 是K8s内置**资源逻辑隔离单元**，用于在同一集群内划分独立资源分组，实现多环境、多业务、多团队隔离。
+
+Namespace 是K8s内置**资源逻辑隔离单元**，用于在同一集群内划分独立资源分组，实现多环境、多业务、多团队隔离。  
+Namespace 的实际价值主要是资源隔离、权限隔离、资源管理和生命周期管理。它不是物理隔离，而是 Kubernetes API 层面的逻辑隔离。
 底层本质：
+
 1. 所有带namespace字段的资源（Pod/Deployment/Service/ConfigMap/PVC等）隶属于某一个命名空间；
 2. Cluster级资源（Node/CRD/ClusterRole/StorageClass）**不归属任何namespace**，全局共享；
 3. 不同Namespace内同名资源互不冲突，例如 `fat/nginx` 和 `prod/nginx` 是两套独立工作负载。
 
+| 价值          | 一句话说明                                             |
+| ----------- | ------------------------------------------------- |
+| **资源隔离**    | 将不同业务、环境或团队的 Kubernetes 资源逻辑分组，避免资源混杂。            |
+| **名称隔离**    | 允许不同 Namespace 内创建同名资源，避免资源名称冲突。                  |
+| **权限隔离**    | 通过 RBAC 控制用户或团队只能管理指定 Namespace 内的资源。             |
+| **资源配额管理**  | 通过 ResourceQuota 限制 Namespace 的 CPU、内存、对象数量等资源使用。 |
+| **网络隔离**    | 结合 NetworkPolicy 控制不同 Namespace 之间的网络访问权限。        |
+| **生命周期管理**  | 通过 Namespace 统一管理业务资源的创建、删除和回收。                   |
+| **监控与成本统计** | 按 Namespace 聚合资源指标，实现业务监控、容量分析和成本核算。              |
+| **系统组件隔离**  | 将 Kubernetes 系统组件与业务应用分离，提升集群管理清晰度。               |
+
 ### 2.2 集群内置默认命名空间
+
 ```
 # 1. default
 未指定namespace时资源默认创建在此，临时测试使用，业务禁止部署于此
@@ -120,7 +138,7 @@ kubectl config view | grep namespace
 ```
 
 ### 4.4 删除命名空间（高危分级管控）
-删除Namespace会**级联删除内部所有资源**（Pod/Deployment/Service/PVC/Secret等），不可恢复。
+**`删除Namespace会级联删除内部所有资源（Pod/Deployment/Service/PVC/Secret等），不可恢复。`**
 1. fat环境：测试可自行删除重建，风险低
 2. uat环境：需测试负责人确认后执行
 3. prod环境：双人复核、提前备份etcd快照+全资源yaml才可执行

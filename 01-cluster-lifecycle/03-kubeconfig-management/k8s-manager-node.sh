@@ -27,7 +27,8 @@ apt install -y \
     net-tools \
     dnsutils \
     tcpdump \
-    traceroute
+    traceroute \
+    netcat-openbsd
 
 apt install -y \
     iftop \

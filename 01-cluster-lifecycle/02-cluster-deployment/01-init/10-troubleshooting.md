@@ -113,10 +113,13 @@ docker-compose up -d
 ```
 
 ## 六、05-kubeadm-init.md 集群初始化故障
+
 ### 1. 镜像拉取 ImagePullBackOff
+
 1. kubeadm `imageRepository: harbor.jinshaoyong.com/k8s`
 2. 全套控制平面镜像提前上传Harbor k8s项目
 3. containerd 配置跳过tls校验
+
 ### 2. CRI socket 不匹配
 命令行/yaml 统一使用 `unix:///run/containerd/containerd.sock`
 ### 3. 内存/CPU预检报错

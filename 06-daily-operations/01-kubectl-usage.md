@@ -12,27 +12,36 @@ kubectl 是K8s集群唯一标准客户端工具，所有集群API操作入口；
 生产环境禁止直接操作控制平面节点kubectl，统一本地客户端远程访问集群API。
 
 ## 三、多系统客户端离线安装规范
+
 ### 3.1 Linux 离线安装（内网服务器）
+
 1. 内网运维节点提前下载对应集群版本二进制包，避免外网下载；
 2. 解压并赋予执行权限：
+
 ```bash
 mv kubectl /usr/local/bin/
 chmod +x /usr/local/bin/kubectl
 kubectl version --client
 ```
+
 ### 3.2 Windows/Mac 本地运维主机
+
 1. 内网文件服务器分发kubectl二进制；
 2. 配置环境变量PATH，终端可直接调用；
+
 ### 版本匹配强制规则
 客户端kubectl版本与集群apiserver版本偏差不超过1个minor版本，例如集群v1.32，客户端允许v1.31~v1.33。
 
 ## 四、kubeconfig 标准化管控规范
+
 ### 4.1 kubeconfig 默认加载优先级
+
 1. `--kubeconfig` 手动指定文件参数；
 2. `KUBECONFIG` 环境变量；
 3. 默认路径 `~/.kube/config`。
 
 ### 4.2 多集群合并kubeconfig（FAT/UAT/PROD共存）
+
 ```bash
 # 合并多集群配置
 KUBECONFIG=prod.kubeconfig:uat.kubeconfig:fat.kubeconfig kubectl config view --flatten > ~/.kube/config
@@ -43,12 +52,15 @@ chmod 600 ~/.kube/config
 # 仅所有者可读可写，禁止其他用户访问
 chmod 600 ~/.kube/config
 ```
+
 ### 4.4 kubeconfig 分发安全约束
+
 1. PROD管理员kubeconfig加密压缩分发，禁止明文微信/钉钉传输；
 2. 员工OIDC登录优先使用短期token kubeconfig，长期证书仅运维主机留存；
 3. 人员离职立即回收kubeconfig、吊销客户端证书。
 
 ## 五、上下文切换核心操作（多环境快速切换）
+
 ```bash
 # 查看所有上下文
 kubectl config get-contexts

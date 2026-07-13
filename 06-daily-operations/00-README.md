@@ -1,6 +1,9 @@
 # 06-daily-operations/00-README.md
+
 ## 一、文档基础信息
+
 ### 目录归属
+
 路径：`06-daily-operations/`
 前置依赖：集群全套业务文档（工作负载、网络、存储、安全、存储）、etcd备份文档、故障排查文档
 集群基准：Kubernetes v1.32.13、ipvs kube-proxy、CSI动态存储、OIDC认证、GitOps配置管理、内网Harbor
@@ -8,10 +11,12 @@
 配套关联：`cluster-migration.md`、`cluster-upgrade-theory-guide.md`、各模块troubleshooting故障文档
 
 ### 模块核心定位
+
 本目录为**集群日常标准化运维操作手册**，面向运维、开发、测试人员，统一kubectl操作规范、资源标签注解管理、负载发布扩缩容、日志调试、资源监控、YAML资源版本管控、每日巡检清单、高频命令速查。
 统一规范四层环境操作流程，区分FAT自由调试、UAT谨慎变更、PROD双人复核高危操作，覆盖集群90%日常运维场景，降低误操作、发布故障、资源混乱风险，形成标准化可落地操作基线。
 
 ## 二、子文档功能总览
+
 | 文件名称 | 核心覆盖内容 |
 |--------|------------|
 | 00-README.md | 日常运维模块总览、操作分层规范、阅读顺序、上下游依赖、环境操作红线 |
@@ -25,6 +30,7 @@
 | 08-operation-cheatsheet.md | 全场景高频kubectl命令速查表，按工作负载/存储/网络/安全分类整理，可直接复制使用 |
 
 ## 三、三层日常运维操作防御框架
+
 1. **操作前置校验层**
    kubeconfig上下文校验、权限预校验`kubectl auth can-i`、资源Quota/容量/证书前置检查，提前拦截高危操作；
 2. **变更执行层**
@@ -33,24 +39,29 @@
    实时观测Pod事件、日志、资源指标，变更完成留存YAML备份、审计日志，故障可回滚、可追溯。
 
 ## 四、DEV/FAT/UAT/PROD 四层环境运维操作红线规范
+
 ### DEV本地
+
 1. 无操作审批流程，可随意删除、重建资源；
 2. 无需备份、无需巡检，仅本地调试；
 3. 允许长期本地kubeconfig高权限上下文。
 
 ### FAT测试
+
 1. 自由创建/更新普通业务资源，无需双人复核；
 2. 每日定时自动清理闲置PVC、废弃Pod、临时ConfigMap；
 3. 发布前简易校验资源配额，避免存储打满；
 4. 可临时清空NetworkPolicy、RBAC调试。
 
 ### UAT预生产
+
 1. 变更操作需导出资源YAML备份，留存操作记录；
 2. 中间件、存储PVC删除需运维确认；
 3. 发布流程对齐生产，禁止一次性批量重启所有副本；
 4. 每日执行基础巡检，记录异常指标。
 
 ### PROD生产（强制安全约束）
+
 1. **高危操作（删除STS/PVC/NetworkPolicy/RBAC/Secret）必须双人复核+工单**；
 2. 所有变更避开业务凌晨低峰窗口执行；
 3. 发布前完整执行巡检清单，校验存储容量、PVC配额、证书有效期、备份任务状态；
@@ -60,6 +71,7 @@
 7. 每日自动化巡检告警，每周人工完整巡检，月度复盘资源冗余。
 
 ## 五、标准化运维统一约束
+
 1. 所有集群资源统一使用Label标准化标签，用于批量筛选、分组管理；
 2. 生产禁止使用`kubectl apply -f`直接覆盖高危资源，优先patch局部更新；
 3. 禁止使用`--force --grace-period=0`强制删除业务Pod，避免数据丢失；
@@ -69,6 +81,7 @@
 7. 出现业务异常优先使用日志、事件、top指标定位，不直接重启/删除资源。
 
 ## 六、推荐阅读&实操顺序
+
 1. 客户端基础：01-kubectl-usage.md（集群操作入口工具规范）
 2. 资源标识管理：02-resource-management.md（标签、注解、资源局部更新）
 3. 负载发布变更：03-workload-operations.md（发布、回滚、扩缩容核心流程）
@@ -79,19 +92,23 @@
 8. 快速查阅工具：08-operation-cheatsheet.md（高频命令速查手册）
 
 ## 七、上下游文档关联
+
 ### 上游前置
+
 1. 集群安全文档：`05-security-management/01-authentication.md` kubeconfig认证、ServiceAccount权限
 2. 工作负载管理：`02-workload-management/` Deployment/StatefulSet发布底层机制
 3. 网络管理：`03-network-management/` NetworkPolicy、Ingress日常操作规范
 4. 存储管理：`04-storage-management/` PV/PVC扩容、备份日常运维操作
 
 ### 下游配套
+
 1. `etcd-backup.md` 高危运维变更前置快照备份流程
 2. 集群故障排查文档：业务Pod崩溃、发布失败、资源挂载异常定位SOP
 3. 集群升级文档：升级前后资源巡检、资源备份操作规范
 4. 安全审计：`05-security-management/06-audit-log.md` 所有kubectl操作全量审计留痕
 
 ## 八、核心适用业务场景清单
+
 1. 本地kubectl配置、多集群上下文切换、离线集群操作、权限预校验 → 01-kubectl-usage.md
 2. 统一资源标签体系、批量筛选资源、局部更新配置不完整重写YAML → 02-resource-management.md
 3. 业务版本发布、失败回滚、弹性扩缩容、分批重启负载 → 03-workload-operations.md

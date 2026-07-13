@@ -1,5 +1,7 @@
 # 05-kubeadm-init.md
+
 ## 一、文档基础信息
+
 - 前置依赖：03-kubernetes-packages.md 二进制安装kubeadm/kubelet/kubectl完成
 - 执行节点：仅 **k8s-master-01（192.168.11.161）** 单Master集群
 - K8s版本：v1.32.13
@@ -11,6 +13,7 @@
 - 下游文档：06-cni-calico.md
 
 ## 二、集群全局网段规划
+
 | 网段 | 用途 |
 |------|------|
 | 10.244.0.0/16 | Pod网段（Calico） |
@@ -18,6 +21,7 @@
 | 192.168.11.0/24 | 节点物理内网网段 |
 
 ## 三、Master节点前置校验（全部通过再执行初始化）
+
 ```bash
 # 1. 组件版本校验
 kubeadm version
@@ -41,6 +45,7 @@ curl -k https://harbor.jinshaoyong.com/v2/_catalog
 ```
 
 ## 四、方式一：kubeadm init 命令行直接传参
+
 ```bash
 kubeadm init \
   --kubernetes-version=v1.32.13 \
@@ -52,13 +57,16 @@ kubeadm init \
   --upload-certs
 
 ```
+
 ### 关键参数说明
+
 1. `--image-repository=harbor.jinshaoyong.com/k8s`
    控制平面组件镜像全部从内网私有仓库拉取，无需访问外网k8s官方镜像源
 2. `--apiserver-advertise-address`：单Master本机内网IP
 3. `--cri-socket`：指定containerd运行时套接字
 
 运行结果
+
 ```bash
 Your Kubernetes control-plane has initialized successfully!
 
@@ -78,18 +86,19 @@ Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
 
 Then you can join any number of worker nodes by running the following on each as root:
 
-kubeadm join 192.168.11.161:6443 --token i7q4pw.rh8q88pmywd6dfck \
-	--discovery-token-ca-cert-hash sha256:94d7b6d5c9dbcc7a172e88ed13989d541cf8b9bcda35e626425d1f6c624b7d7f 
+kubeadm join 192.168.11.161:6443 --token i7q4pw.rh8q88pmywd6dfck --discovery-token-ca-cert-hash sha256:94d7b6d5c9dbcc7a172e88ed13989d541cf8b9bcda35e626425d1f6c624b7d7f 
 ```
 
-
 ## 五、方式二：YAML配置文件初始化（生产标准推荐）
+
 ### 5.1 导出默认模板
+
 ```bash
 kubeadm config print init-defaults > /usr/local/src/kubeadm-init.yaml
 ```
 
 ### 5.2 完整可执行 kubeadm-init.yaml（适配单Master+内网Harbor）
+
 ```yaml
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
@@ -125,11 +134,13 @@ etcd:
 ```
 
 ### 5.3 使用yaml文件执行初始化
+
 ```bash
 kubeadm init --config ./kubeadm-init.yaml
 ```
 
 ## 六、初始化完成后配置kubectl管理员权限（Master必操作）
+
 ```bash
 # 创建用户kubeconfig目录
 mkdir -p $HOME/.kube
@@ -144,23 +155,29 @@ kubectl get cs
 ```
 
 ## 七、保存Worker节点加入命令（供给07-worker-join.md）
+
 初始化成功输出示例，复制保存：
-```
+
+```bash
 kubeadm join 192.168.11.161:6443 --token abcdef.0123456789abcdef \
   --discovery-token-ca-cert-hash sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
 ### Token过期重新生成join命令
+
 ```bash
 # 生成24小时有效期节点接入命令
 kubeadm token create --print-join-command
 ```
 
 ## 八、单Master解除控制平面污点，允许调度业务Pod
+
 ```bash
 kubectl taint nodes k8s-master-01 node-role.kubernetes.io/control-plane:NoSchedule-
 ```
 
 ## 九、集群初始化验收清单
+
 ```bash
 # 1. 核对集群版本
 kubectl version
@@ -175,6 +192,7 @@ ls -l $HOME/.kube/config
 ```
 
 ## 十、常见故障排查
+
 1. **镜像拉取失败**
    - 确认containerd已配置 `harbor.jinshaoyong.com` 跳过tls校验
    - 确认Harbor仓库存在`k8s`项目，且镜像已提前上传
@@ -189,6 +207,7 @@ ls -l $HOME/.kube/config
    添加参数 `--ignore-preflight-errors=NumCPU,Mem`
 
 ## 十一、上下游文档关联
+
 - 上游：03-kubernetes-packages.md
 - 下游：06-cni-calico.md 部署Calico网络插件
 - 节点扩容：07-worker-join.md 使用kubeadm join接入工作节点

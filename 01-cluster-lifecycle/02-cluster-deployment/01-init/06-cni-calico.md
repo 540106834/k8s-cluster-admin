@@ -1,5 +1,7 @@
 # 06-cni-calico.md
+
 ## 一、文档基础信息
+
 - 前置依赖：`05-kubeadm-init.md` Master节点kubeadm初始化完成，kubectl可正常连接集群
 - 执行节点：仅 **k8s-master-01（192.168.11.161）**
 - K8s版本：v1.32.13
@@ -10,6 +12,7 @@
 - 下游文档：07-worker-join.md
 
 ## 二、集群全局信息
+
 | 主机名 | IP | 角色 |
 |--------|----|------|
 | k8s-master-01 | 192.168.11.161 | 单控制面 |
@@ -18,6 +21,7 @@
 | harbor.jinshaoyong.com | 192.168.11.170 | 私有镜像仓库 |
 
 ## 三、前置校验（Master节点执行）
+
 ```bash
 # 1. 集群连通正常
 kubectl get cs

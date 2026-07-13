@@ -1,172 +1,233 @@
-# 03-node-drain.md
+# 03‑worker‑node‑management/03‑node‑drain.md
 
-## 文档元信息
+## 一、文档基础信息
 
-归属模块：Worker 节点管理
-前置依赖：00-overview.md、01-node-basics.md
-关联文档：04-node-lifecycle.md、05-node-troubleshooting.md、10-runbooks.md
-适用场景：节点停机维护、内核升级、硬件更换、节点退役、故障隔离、集群缩容
-核心目标：标准化安全排空节点，保障业务不中断、数据不丢失
+- 文件路径：`03‑worker‑node‑management/03‑node‑drain.md`
+- 前置文档：
+  - `00‑overview.md`、`01‑node‑basics.md`、`04‑node‑lifecycle.md`
+  - `02‑workload‑management/06‑pod‑disruption‑budget.md`
+- 集群基准：Kubernetes‑1.32.13、Lease模式、containerd‑2.1.5、PDB、StatefulSet、Deployment、DaemonSet、CSI‑PV、Calico网络、内网离线环境。
+- 适用环境：DEV / FAT / UAT / PROD。
+- 文档核心：cordon、drain内部执行逻辑、驱逐优先级、PDB约束、参数详解、分批排空规范、dry‑run预检查、drain失败原因、生产标准命令、事后验证步骤。
 
-# 一、核心概念区分
+## 二、Cordon与Drain概念区分
 
-## 1.1 cordon 封锁节点
+### 2.1 kubectl cordon（隔离调度，只禁止新建Pod）
 
 ```bash
-kubectl cordon <node-name>
+kubectl cordon k8s-node-192-168-11-163
 ```
-作用：标记节点 `spec.unschedulable=true`，**禁止新Pod调度到该节点**，已运行Pod保持正常运行，不驱逐。
-适用：提前锁定节点，预留时间做排空准备。
 
-## 1.2 drain 排空节点
+内部执行逻辑：
+
+1. 修改`spec.unschedulable=true`；自动添加污点 `node.kubernetes.io/unschedulable:NoSchedule`；
+2. kube‑scheduler不再把Pod调度到此节点；
+3. **已经运行在节点上的Pod不会被删除，业务继续运行**。
+
+取消隔离：
+
 ```bash
-kubectl drain <node-name> [参数]
+kubectl uncordon k8s-node-192-168-11-163
 ```
-作用：在cordon基础上，**驱逐节点上所有常规Pod**，不驱逐DaemonSet；
-驱逐流程：优雅终止Pod（默认30s宽限期）→ 调度器在其他可用节点重建Pod。
-适用：需要关机、重启、下线节点的标准操作。
 
-## 1.3 uncordon 解除封锁
+### 2.2 kubectl drain（排空节点，迁移现有Pod）
+
+drain内部会自动先执行cordon，之后驱逐节点内Pod：
+
+1. 控制器（ReplicaSet/StatefulSet）在其他可用节点新建就绪Pod；旧Pod才会被删除；
+2. 驱逐过程严格遵守PDB(PodDisruptionBudget)，保证min‑available；
+3. DaemonSet默认不会被drain删除；
+4. emptyDir临时卷默认阻止drain执行；PVC持久卷仅删除Pod，PV/PVC本身保留。
+
+## 三、kubectl‑drain参数详细解析（生产必记）
+
+### 3.1 生产环境标准命令
+
 ```bash
-kubectl uncordon <node-name>
+# 生产推荐完整命令
+kubectl drain k8s-node-192-168-11-163 --ignore-daemonsets --delete-emptydir-data
 ```
-作用：取消 `unschedulable` 标记，恢复节点调度能力。
-适用：节点维护完成、重新投入业务。
 
-# 二、标准安全 drain 完整命令（生产强制模板）
-## 2.1 通用生产标准命令
+1. `--ignore‑daemonsets`
+    - 跳过calico‑node、csi‑node、kube‑proxy、filebeat等DaemonSet组件；
+    - 不加此参数，drain会因为DaemonSet Pod拒绝执行排空。
+2. `--delete‑emptydir‑data`
+    - emptyDir属于节点本地临时存储；删除Pod会丢失emptyDir里的数据；
+    - 明确确认接受临时目录数据丢失，drain才会执行；
+    - PVC不会受此参数影响。
+3. 生产环境禁止使用的参数：
+    - `--force`：强制删除不受控制器管理的裸Pod（静态Pod、手动创建Pod），生产严禁使用；
+    - `--grace‑period‑seconds`：缩短优雅终止时间，可能导致业务异常。
+
+### 3.2 预执行dry‑run（变更前必做）
+
 ```bash
-kubectl drain $NODE_NAME \
-  --ignore-daemonsets \
-  --delete-emptydir-data \
-  --timeout=300s \
-  --grace-period=30
+kubectl drain k8s-node-192-168-11-163 --ignore-daemonsets --delete-emptydir-data --dry-run=client
 ```
-### 参数释义
-1. `--ignore-daemonsets`
-DaemonSet（calico、kube-proxy、node-exporter等）不驱逐，每节点必须常驻，不加会报错阻断drain。
-2. `--delete-emptydir-data`
-删除使用 emptyDir 本地临时存储的Pod；不加时存在emptyDir Pod会直接失败，无法排空。
-> 风险提示：emptyDir数据随Pod销毁丢失，业务持久化数据必须使用PVC。
-3. `--grace-period=30`
-Pod优雅退出等待时间，超过后强制kill；有状态应用可调高至60~120s。
-4. `--timeout=300s`
-整体排空操作超时阈值，大规模节点Pod多时延长。
 
-## 2.2 有状态业务增强版（数据库、中间件）
+dry‑run只输出计划要驱逐哪些Pod，不会真实执行，提前发现问题。
+
+## 四、Pod驱逐优先级（kube‑scheduler执行顺序）
+
+1. 优先驱逐顺序由Pod QoS等级决定：
+    `Best‑Effort（尽力服务） > Burstable（突发） > Guaranteed（有保障）`
+2. 资源压力驱逐（kubelet本地驱逐）和drain排空驱逐逻辑一致。
+3. 资源控制器处理顺序：
+    1. Deployment、ReplicaSet、Job、CronJob：先在其他节点拉起新Pod就绪后删除旧Pod；
+    2. StatefulSet：按照Pod编号从大到小依次删除；受partition策略控制；
+    3. DaemonSet：默认不会被drain驱逐；升级DaemonSet由控制器滚动更新；
+    4. kube‑system内系统Pod默认跳过drain排空。
+
+## 五、PDB对drain的约束（生产最常见阻塞原因）
+
+### 5.1 PDB作用
+
+PodDisruptionBudget定义最小可用副本数量：`minAvailable`或者`maxUnavailable`。
+
+- 如果驱逐后就绪副本小于minAvailable → drain会暂停卡住，不会继续驱逐Pod。
+
+### 5.2 生产环境处理方案
+
+1. 优先方案：扩容副本数量，提高整体冗余，再执行drain排空；
+2. 备选方案（仅UAT/FAT）：业务低峰期临时调高maxUnavailable，排空完成恢复PDB配置；
+
+> PROD禁止随意修改PDB配置，必须走工单审批。
+
+示例PDB：
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: order-pdb
+  namespace: prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: order-api
+```
+
+## 六、PROD环境分批排空标准流程（强制遵守）
+
+> 生产禁止一次性同时drain多个节点，避免集群大规模故障。
+
+1. 步骤1：dry‑run预检查
+    ```bash
+    kubectl drain k8s-node-192-168-11-163 --ignore-daemonsets --delete-emptydir-data --dry-run=client
+    ```
+2. 步骤2：执行正式drain命令；
+3. 步骤3：持续观察Pod重建状态：
+    ```bash
+    kubectl get pods -n prod -w
+    kubectl top pods -n prod
+    ```
+4. 等待所有业务Pod迁移到其他节点并且就绪，观察5‑10分钟；确认业务接口、数据库访问正常；
+5. 执行节点维护（内核升级、containerd升级、硬件更换）；
+6. 维护完毕恢复节点调度：
+    ```bash
+    kubectl uncordon k8s-node-192-168-11-163
+    ```
+7. 再操作下一个节点。
+
+## 七、drain完成后节点状态判断
+### 7.1 drain成功标志
+1. 业务Pod全部被驱逐；节点仅剩DaemonSet组件Pod；
+    ```bash
+    kubectl get pods --field-selector spec.nodeName=k8s-node-192-168-11-163 -A
+    ```
+    只剩下calico‑node、csi‑node、kube‑proxy、filebeat；
+2. 节点状态依然Ready，但是unschedulable=true；
+3. PVC资源不会被删除，依旧保留；
+
+### 7.2 维护结束验证清单
+1. uncordon恢复调度；
+2. 新Pod可以正常调度到此节点；
+3. node‑exporter指标正常上报；
+4. 节点四个压力条件全部为false；
+5. Prometheus监控面板查看节点CPU内存负载正常。
+
+## 八、drain执行失败的常见原因及解决方案
+### 问题1：drain长时间卡住无法继续驱逐Pod
+- 原因：PDB minAvailable限制，驱逐后副本不足；
+- 解决：扩容副本或者低峰期临时修改PDB。
+
+### 问题2：提示存在独立裸Pod（静态Pod）
+报错：`cannot delete Pods not managed by ReplicationController, ReplicaSet, Job, DaemonSet or StatefulSet`
+- 原因：存在手动创建Pod，没有控制器管理；
+- 生产处理：手动确认业务安全之后删除裸Pod，严禁使用`--force`。
+
+### 问题3：提示empty‑dir数据风险，拒绝执行drain
+- 原因：Pod挂载emptyDir，没有添加`--delete‑emptydir‑data`；
+- 解决：带上该参数执行drain。
+
+### 问题4：新Pod在其他节点启动失败导致旧Pod无法删除
+排查步骤：
+1. 查看events：`kubectl get events -n prod`；
+2. 镜像拉取失败、准入Webhook拒绝、PVC挂载失败、资源不足；
+3. 问题修复后旧Pod才会被清理。
+
+### 问题5：DaemonSet Pod阻止drain
+- 解决：增加`--ignore‑daemonsets`参数。
+
+## 九、节点宕机后的Pod驱逐机制（区分主动drain和节点宕机）
+1. 手动drain：人为排空Pod，控制器主动重建Pod；
+2. 节点宕机场景：
+    - kubelet停止续约Lease；
+    - node‑controller等待`pod‑eviction‑timeout=5min`超时；
+    - 超时后才会在其他节点重建Pod；
+    - 原节点恢复上线后，旧Pod会被直接删除。
+
+## 十、DEV/FAT/UAT/PROD差异化标准
+1. DEV环境：
+    - 可以使用`--force`强制删除Pod；不用遵守PDB；无需分批执行。
+2. FAT测试环境：
+    - drain参数和生产一致；必要时工作时段临时修改PDB；
+    - 可以一次性排空2台节点，但需要提前确认。
+3. UAT预生产环境：
+    - 禁止`--force`；严格分批排空；
+    - drain操作放在凌晨低峰窗口，操作前后观察监控指标。
+4. PROD生产环境（强制约束）
+    1. drain前必须执行dry‑run预校验；禁止使用`--force`参数；
+    2. 一次只能排空一台节点，排空完成观察5‑10分钟业务指标；
+    3. PDB配置不允许随意修改，调整PDB必须走工单双人审批；
+    4. 节点维护避开定时备份、快照任务，防止IO打满；
+    5. 内核升级、containerd升级完成之后必须观察30分钟；
+    6. drain操作全程被apiserver审计日志记录。
+
+## 十一、高频命令汇总
 ```bash
-kubectl drain $NODE_NAME \
-  --ignore-daemonsets \
-  --delete-emptydir-data \
-  --grace-period=120 \
-  --timeout=600s
+# 禁止调度新Pod
+kubectl cordon k8s-node-192-168-11-163
+
+# 恢复调度
+kubectl uncordon k8s-node-192-168-11-163
+
+# 预执行排空（dry‑run）
+kubectl drain k8s-node-192-168-11-163 --ignore-daemonsets --delete-emptydir-data --dry-run=client
+
+# 正式排空（生产标准）
+kubectl drain k8s-node-192-168-11-163 --ignore-daemonsets --delete-emptydir-data
+
+# 查看节点上运行的Pod
+kubectl get pods --field-selector spec.nodeName=k8s-node-192-168-11-163 -A
+
+# 查看节点污点
+kubectl describe node k8s-node-192-168-11-163 | grep Taints
 ```
 
-## 2.3 强制排空（紧急故障隔离，谨慎使用）
-仅节点卡死、无法等待优雅退出时使用，会直接切断业务：
-```bash
-kubectl drain $NODE_NAME \
-  --ignore-daemonsets \
-  --delete-emptydir-data \
-  --force
-```
-`--force`：无视孤立Pod（无控制器管理的裸Pod）强制驱逐，极易丢失数据。
+## 十二、生产最佳实践
+1. 遵循标准顺序：`cordon → drain → 维护 → uncordon`，不要跳过步骤；
+2. 业务务必配置PDB，防止排空期间业务不可用；
+3. 尽量把empty‑dir临时存储替换成PVC持久存储，减少drain顾虑；
+4. 生产维护窗口选凌晨低峰，错开定时备份、CSI快照任务；
+5. drain失败优先排查PDB、Pod启动失败问题，不要粗暴使用--force；
+6. 集群升级时采用分批drain‑升级‑uncordon，实现滚动升级。
 
-# 三、完整操作流程（标准运维步骤）
-## 步骤1：预先封锁节点，阻止新Pod调度
-```bash
-kubectl cordon $NODE_NAME
-# 校验：节点状态显示 SchedulingDisabled
-kubectl get nodes
-```
-
-## 步骤2：查看节点现有业务Pod（评估影响）
-```bash
-# 列出节点上所有Pod
-kubectl get pods -A --field-selector spec.nodeName=$NODE_NAME
-# 过滤业务Pod，排除kube-system组件
-kubectl get pods -A --field-selector spec.nodeName=$NODE_NAME | grep -v kube-system
-```
-
-## 步骤3：执行安全drain排空
-使用上文标准drain命令，实时观察Pod驱逐重建进度。
-
-## 步骤4：校验排空完成
-无业务Pod残留即代表排空成功：
-```bash
-kubectl get pods -A --field-selector spec.nodeName=$NODE_NAME | grep -v DaemonSet
-# 无输出 = 排空完成
-```
-
-## 步骤5：执行节点维护/关机/重装/下线
-内核升级、硬件更换、重启、关机、删除节点等操作。
-
-## 步骤6：节点恢复后解除封锁
-```bash
-kubectl uncordon $NODE_NAME
-# 校验调度恢复
-kubectl get nodes
-```
-
-# 四、drain 常见报错与修复方案
-## 报错1：error: cannot drain node, DaemonSet-managed pods exist
-根因：未加 `--ignore-daemonsets`
-修复：命令追加 `--ignore-daemonsets`
-
-## 报错2：error: cannot drain node, pods with local storage exist
-根因：节点存在使用 emptyDir 的Pod，未加删除参数
-修复：追加 `--delete-emptydir-data`，提前确认本地临时数据可丢弃
-
-## 报错3：error: pod has no controller, use --force to override
-根因：存在裸Pod（直接kubectl run创建，无deployment/statefulset控制器）
-修复：
-1. 优先删除无用裸Pod `kubectl delete pod <pod-name> -n <ns>`
-2. 紧急场景使用 `--force` 参数强制排空
-
-## 报错4：drain 长时间卡住，Pod无法驱逐
-排查方向：
-1. Pod preStop钩子执行阻塞，检查容器日志
-2. PV/PVC存储绑定异常，无法解绑
-3. 其他节点资源不足，无节点可调度重建Pod
-处理：扩容集群节点、临时释放资源、调高grace-period超时时间
-
-# 五、特殊场景处理规范
-## 5.1 StatefulSet 有状态应用 drain
-1. 提前确认PVC存储为远程存储（块存储/对象存储），非本地盘
-2. 拉长优雅退出时间 `--grace-period=120`
-3. 排空完成后观察Pod有序重建，确认数据正常挂载
-
-## 5.2 单副本关键业务节点排空
-1. 提前扩容副本数至2，避免业务中断
-2. 执行drain，等待新Pod就绪后再操作原节点
-3. 维护完成后可按需缩容回原副本数
-
-## 5.3 故障失联节点（Unknown状态）无法登录执行drain
-节点网络中断、关机无法ssh，无法正常排空：
-1. 先确认业务Pod已自动漂移至其他节点
-2. 强制删除失效Node对象
-```bash
-kubectl delete node $NODE_NAME
-```
-3. 修复主机后重新执行节点接入（02-node-join.md）
-
-## 5.4 批量多节点滚动维护规范
-禁止同时drain多个承载核心业务的节点，滚动流程：
-1. 单次仅操作1台worker节点
-2. drain完成，确认所有业务Pod就绪
-3. 维护完成uncordon恢复调度
-4. 再操作下一台节点
-
-# 六、风险管控清单（操作前必查）
-1. 确认集群剩余节点资源充足，可承载被驱逐Pod
-2. 核心业务副本数≥2，避免单副本业务断流
-3. 确认emptyDir临时数据无持久化需求
-4. 有状态应用提前核对PVC存储可用性
-5. 避开业务高峰时段执行排空操作
-6. 记录操作时间、节点名称，便于故障回溯
-
-# 七、关联文档跳转
-- 节点全生命周期上线/维护/退役：04-node-lifecycle.md
-- 节点故障隔离与应急处理：05-node-troubleshooting.md
-- 新增节点接入集群：02-node-join.md
-- 线上事故标准化处理流程：10-runbooks.md
+## 十三、关联文档
+1. `04‑node‑lifecycle.md`：节点完整生命周期；
+2. `08‑resource‑pressure.md`：kubelet资源压力驱逐机制；
+3. `02‑workload‑management/06‑pod‑disruption‑budget.md` PDB配置；
+4. `05‑node‑troubleshooting.md`：节点Not‑Ready故障排查；
+5. `07‑monitoring‑and‑troubleshooting`：排空期间业务指标观测；
+6. `10‑runbooks.md`：节点宕机Runbook应急手册。
