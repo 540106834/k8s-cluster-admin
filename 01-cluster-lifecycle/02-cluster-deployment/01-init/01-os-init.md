@@ -81,6 +81,9 @@ cat /etc/fstab | grep swap
 
 K8s+Calico网络必备内核模块：overlay、br_netfilter
 
+> overlay 是 Linux 内核提供的 OverlayFS（联合文件系统） 支持。
+> br_netfilter 用于让 Linux 桥接网络流量经过 netfilter（iptables）处理
+
 ```bash
 # 配置开机自动加载
 cat > /etc/modules-load.d/99-k8s-kernel.conf <<EOF
@@ -104,15 +107,20 @@ cat > /etc/sysctl.d/99-k8s-network-tune.conf <<EOF
 # 网桥转发（K8s iptables转发核心参数）
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
+
 # IPv4全局转发，容器跨网段通信必备
 net.ipv4.ip_forward                 = 1
+
 # 放大连接跟踪表，高并发Pod防丢包
 net.netfilter.nf_conntrack_max      = 262144
+
 # 关闭IPv6自动路由接收，规避网络异常
 net.ipv6.conf.all.accept_ra         = 0
 net.ipv6.conf.default.accept_ra     = 0
+
 # 内存OOM优化
 vm.overcommit_memory = 1
+
 # TCP网络性能优化
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_timestamps = 0
