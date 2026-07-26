@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: uat-developer-binding
+  namespace: uat
+
+subjects:
+- kind: ServiceAccount
+  name: uat-developer
+  namespace: uat
+
+roleRef:
+  kind: Role
+  name: uat-developer
+  apiGroup: rbac.authorization.k8s.io

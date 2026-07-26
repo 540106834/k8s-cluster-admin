@@ -11,6 +11,8 @@ APIServer 端口：6443
 
 ## 三、前置检查
 ```bash
+source <(kubectl completion bash)
+kubectl completion bash > /etc/bash_completion.d/kubectl
 kubectl get nodes
 ```
 

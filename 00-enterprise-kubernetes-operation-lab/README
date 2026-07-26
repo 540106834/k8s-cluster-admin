@@ -1,0 +1,114 @@
+我会再调整一下思路。
+
+你的目标不是写一个**Kubernetes 文档仓库**，而是打造一个**企业 Kubernetes 运维实战仓库**。因此目录应该满足三个原则：
+
+1. **按照企业项目生命周期（Project Lifecycle）排序**，而不是 Kubernetes 模块。
+2. **每个 Markdown 都对应一张真实工单（Task）**，完成后就是一个完整的运维任务。
+3. **前后存在依赖关系**，后面的案例建立在前面的成果之上，最终完整模拟一名 Kubernetes 运维工程师从平台建设到日常运维的全部工作。
+
+我建议目录命名尽量使用**动词开头（Action）**，更符合 Runbook 风格。
+
+---
+
+```text
+enterprise-kubernetes-operations/
+│
+├── 01-infrastructure-delivery/                      # 基础设施交付
+│   ├── build-kubernetes-cluster.md                  ★★★★★  【平台交付】从零部署 Kubernetes 集群（企业平台建设起点）
+│   ├── expand-worker-nodes.md                       ★★★★★  【资源交付】新增 Worker 节点并完成集群扩容
+│   ├── replace-worker-node.md                       ★★★★☆  【故障恢复】替换异常节点并恢复调度能力
+│   ├── backup-etcd-cluster.md                       ★★★★★  【数据保护】建立 ETCD 初始备份策略
+│   └── validate-cluster-health.md                   ★★★★★  【交付验收】完成集群健康检查与验收
+│
+├── 02-platform-delivery/                            # 平台能力建设
+│   ├── build-harbor-registry.md                     ★★★★★  【平台建设】部署 Harbor 企业镜像仓库
+│   ├── configure-containerd-registry.md             ★★★★★  【平台配置】配置所有节点使用 Harbor
+│   ├── build-loadbalancer-platform.md               ★★★★★ 【平台建设】部署 MetalLB，为裸机提供 LoadBalancer 能力
+│   ├── build-ingress-platform.md                    ★★★★★  【平台建设】部署统一 Ingress 网关
+│   ├── build-monitoring-platform.md                 ★★★★★  【平台建设】部署 Prometheus + Grafana
+│   ├── build-log-platform.md                        ★★★★☆  【平台建设】部署日志采集平台
+│   ├── build-storage-platform.md                    ★★★★☆  【平台建设】部署 StorageClass
+│   └── build-certificate-platform.md                ★★★★☆  【平台建设】部署 Cert Manager
+│
+├── 03-project-delivery/                             # 项目（Namespace）交付
+│   ├── create-project-workspace.md                  ★★★★★  【项目交付】创建 DEV/UAT/PROD 项目运行环境
+│   ├── enable-private-image-access.md               ★★★★★  【项目交付】配置 Harbor Robot、ImagePullSecret、默认 ServiceAccount
+│   ├── deliver-developer-access.md                  ★★★★★  【权限交付】配置 RBAC、生成 kubeconfig 并交付开发团队
+│   ├── configure-project-resource-policy.md         ★★★★☆  【资源治理】配置 Quota、LimitRange、NetworkPolicy
+│   └── validate-project-environment.md              ★★★★☆  【项目验收】验证 Namespace 是否具备上线条件
+│
+├── 04-application-delivery/                         # 应用上线
+│   ├── deploy-java-application.md                   ★★★★★  【业务上线】部署 Java 微服务
+│   ├── publish-application-release.md               ★★★★★  【版本发布】完成新版本滚动发布
+│   ├── rollback-application-release.md              ★★★★★  【版本回滚】发布异常后的快速回滚
+│   ├── expose-application-service.md                ★★★★★  【服务发布】配置 Service 与 Ingress 对外提供访问
+│   ├── configure-application-autoscaling.md         ★★★★☆  【弹性伸缩】配置 HPA 自动扩缩容
+│   └── deploy-stateful-application.md               ★★★★☆  【业务上线】部署 MySQL、Redis 等有状态应用
+│
+├── 05-cluster-operations/                           # 日常运维
+│   ├── inspect-cluster-health.md                    ★★★★★  【日常巡检】检查节点、Pod、组件运行状态
+│   ├── perform-node-maintenance.md                  ★★★★★  【节点维护】Cordon、Drain、恢复节点
+│   ├── expand-cluster-capacity.md                   ★★★★★  【容量管理】新增节点完成集群扩容
+│   ├── rotate-cluster-certificates.md               ★★★★☆  【证书维护】检查并更新 Kubernetes 证书
+│   ├── manage-node-labels-and-taints.md             ★★★★☆  【资源调度】维护 Label 与 Taint
+│   └── cleanup-unused-resources.md                  ★★★☆☆  【资源优化】清理无用资源释放容量
+│
+├── 06-incident-response/                            # 故障响应
+│   ├── recover-image-pull-failure.md                ★★★★★  【故障处理】排查 ImagePullBackOff
+│   ├── recover-pod-startup-failure.md               ★★★★★  【故障处理】排查 CrashLoopBackOff
+│   ├── recover-service-connectivity.md              ★★★★★  【故障处理】恢复 Service 通信
+│   ├── recover-ingress-routing.md                   ★★★★★  【故障处理】恢复 Ingress 路由
+│   ├── recover-pod-network.md                       ★★★★★  【故障处理】恢复 Pod 网络通信
+│   ├── recover-node-notready.md                     ★★★★★  【故障处理】恢复 Node NotReady
+│   ├── recover-control-plane.md                     ★★★★☆  【故障处理】恢复控制面组件
+│   └── recover-etcd-cluster.md                      ★★★★☆  【故障处理】恢复 ETCD 集群
+│
+├── 07-platform-maintenance/                         # 平台维护
+│   ├── upgrade-kubernetes-cluster.md                ★★★★★  【平台升级】升级 Kubernetes 小版本
+│   ├── upgrade-container-runtime.md                 ★★★★☆  【平台升级】升级 Containerd
+│   ├── upgrade-ingress-platform.md                  ★★★★☆  【平台升级】升级 Ingress
+│   ├── upgrade-monitoring-platform.md               ★★★☆☆  【平台升级】升级监控平台
+│   └── migrate-kubernetes-cluster.md                ★★★☆☆  【平台迁移】迁移 Kubernetes 集群
+│
+├── 08-disaster-recovery/                            # 容灾恢复
+│   ├── backup-etcd.md                               ★★★★★  【容灾备份】建立 ETCD 定时备份
+│   ├── restore-etcd.md                              ★★★★★  【容灾恢复】恢复 ETCD 数据
+│   ├── recover-business-application.md              ★★★★☆  【业务恢复】恢复业务应用
+│   └── execute-disaster-recovery-drill.md           ★★★☆☆  【应急演练】模拟完整灾难恢复流程
+│
+└── 09-platform-automation/                          # 平台自动化
+    ├── deploy-applications-with-helm.md             ★★★★★  【自动化发布】使用 Helm 管理业务
+    ├── build-gitlab-ci-pipeline.md                  ★★★★★  【持续交付】构建 GitLab CI/CD 发布流水线
+    ├── implement-gitops-workflow.md                 ★★★★☆  【平台演进】实现 GitOps 持续交付
+    └── automate-cluster-operations.md               ★★★★☆  【自动化运维】编写平台运维自动化脚本
+```
+
+## 我建议再增加一个约束（非常重要）
+
+以后**每一个 `.md` 都使用统一模板**，这样整个仓库会非常专业。
+
+例如：
+
+```text
+# 任务背景（真实企业场景）
+
+# 工单需求（为什么做）
+
+# 前置条件（依赖哪些前面的案例）
+
+# 实施步骤（详细操作）
+
+# 验证结果（如何确认成功）
+
+# 常见故障（生产中容易遇到的问题）
+
+# 回滚方案（失败如何恢复）
+
+# 运维规范（企业最佳实践）
+
+# 知识总结（涉及 Kubernetes 原理）
+
+# 延伸学习（关联下一章节）
+```
+
+这样每个文档既是一份**学习笔记**，也是一份可以直接用于企业的 **Runbook（运维操作手册）**。当你完成整个仓库时，相当于完整模拟了一名 Kubernetes 运维工程师从**平台建设、项目交付、应用发布、日常运维、故障响应到平台演进**的核心工作流程，对于面试和实际岗位都具有很高的参考价值。

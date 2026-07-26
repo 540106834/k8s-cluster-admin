@@ -1,0 +1,43 @@
+# uat-developer-role.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+
+metadata:
+  name: uat-developer
+  namespace: uat
+
+
+rules:
+
+- apiGroups:
+  - ""
+
+  resources:
+  - pods
+  - services
+  - configmaps
+
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - delete
+
+
+- apiGroups:
+  - apps
+
+  resources:
+  - deployments
+  - replicasets
+
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - delete
