@@ -1,8 +1,8 @@
 # replace-worker-node.md
 # Kubernetes 故障 Worker 节点下线、替换、恢复完整运维手册
 ## 一、文档定位
-本文针对 Worker 节点硬件故障、系统损坏、内核异常、磁盘故障、安全漏洞等场景，提供**节点驱逐 → 下线隔离 → 销毁故障节点 → 新增替换节点 → 业务回迁 → 全量健康校验**标准化闭环操作流程；适配 kubeadm 自建企业集群，配套集群交付、扩容、ETCD 备份、集群健康校验文档，是生产节点故障应急处置SOP。
-前置依赖：build-kubernetes-cluster.md、expand-worker-nodes.md、validate-cluster-health.md、backup-etcd-cluster.md
+本文针对 Worker 节点硬件故障、系统损坏、内核异常、磁盘故障、安全漏洞等场景，提供**节点驱逐 → 下线隔离 → 销毁故障节点 → 新增替换节点 → 业务回迁 → 全量健康校验**标准化闭环操作流程；适配 kubeadm 自建企业集群，配套集群交付、扩容、ETCD 备份、集群健康校验文档，是生产节点故障应急处置SOP。  
+前置依赖：build-kubernetes-cluster.md、expand-worker-nodes.md、validate-cluster-health.md、backup-etcd-cluster.md  
 下游关联：validate-cluster-health.md
 
 ## 二、前置判断与风险评估
