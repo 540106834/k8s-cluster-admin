@@ -44,6 +44,11 @@ enterprise-kubernetes-operations/
 │   ├── expose-application-service.md                ★★★★★  【服务发布】配置 Service 与 Ingress 对外提供访问
 │   ├── configure-application-autoscaling.md         ★★★★☆  【弹性伸缩】配置 HPA 自动扩缩容
 │   └── deploy-stateful-application.md               ★★★★☆  【业务上线】部署 MySQL、Redis 等有状态应用
+│   │
+│   ├── scale-down-application.md                    ★★★★☆  【业务降级】临时缩容应用实例
+│   ├── disable-application-service.md                ★★★★☆  【服务下线】停止流量入口
+│   ├── decommission-application.md                   ★★★★★  【应用退役】完整下线应用
+│   └── cleanup-application-resources.md              ★★★★☆  【资源清理】删除 Kubernetes 资源
 │
 ├── 05-cluster-operations/                           # 日常运维
 │   ├── inspect-cluster-health.md                    ★★★★★  【日常巡检】检查节点、Pod、组件运行状态

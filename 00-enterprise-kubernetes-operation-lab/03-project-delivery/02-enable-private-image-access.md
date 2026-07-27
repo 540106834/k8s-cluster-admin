@@ -1,11 +1,12 @@
 # enable-private-image-access.md
 # Namespace 配置 Harbor 私有镜像免密拉取完整操作手册
 ## 一、文档定位
-本文基于企业私有Harbor镜像仓库，实现**单个项目命名空间统一配置镜像拉取权限**：创建ImagePullSecret、绑定默认ServiceAccount、区分DEV/UAT/PROD机器人账号、全命名空间Pod自动免密拉取私有镜像；前置依赖`create-project-workspace.md`、`build-harbor-registry.md`、`configure-containerd-registry.md`，下游关联`validate-project-environment.md`。
+本文基于企业私有Harbor镜像仓库，实现**单个项目命名空间统一配置镜像拉取权限**：创建ImagePullSecret、绑定默认ServiceAccount、区分DEV/UAT/PROD机器人账号、全命名空间Pod自动免密拉取私有镜像；  
+前置依赖`create-project-workspace.md`、`build-harbor-registry.md`、`configure-containerd-registry.md`，下游关联`validate-project-environment.md`。
 
 ## 二、前置准备
 ### 2.1 前置资源与信息
-1. Harbor 私有仓库域名：`harbor.example.com`
+1. Harbor 私有仓库域名：`harbor.jinshaoyong.com`
 2. 区分环境机器人只读账号（严禁使用管理员账号）
    - dev环境：robot-dev-readonly / 机器人密钥
    - uat环境：robot-uat-readonly / 机器人密钥
@@ -24,7 +25,7 @@
 ```bash
 # 替换参数：命名空间、Harbor域名、机器人账号、机器人密码
 export NS=dev-demo
-export HARBOR_DOMAIN=harbor.example.com
+export HARBOR_DOMAIN=harbor.jinshaoyong.com
 export ROBOT_USER=robot-dev-readonly
 export ROBOT_PWD=RobotDev@2026
 
@@ -97,7 +98,7 @@ metadata:
 spec:
   containers:
   - name: test
-    image: harbor.example.com/dev/busybox:1.36
+    image: harbor.jinshaoyong.com/dev/busybox:1.36
     command: ["sleep","300"]
 ```
 ### 5.2 执行创建并验证状态
