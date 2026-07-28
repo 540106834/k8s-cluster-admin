@@ -24,16 +24,15 @@
 ### 3.1 命令行一键创建Secret（推荐，无需YAML明文）
 ```bash
 # 替换参数：命名空间、Harbor域名、机器人账号、机器人密码
-export NS=dev-demo
-export HARBOR_DOMAIN=harbor.jinshaoyong.com
-export ROBOT_USER=robot-dev-readonly
-export ROBOT_PWD=RobotDev@2026
+# 机器人账号：
+# robot$addons 需要加''
+# BGvqy2N9AHpGxNo9tnjbWLuBm7BACtYK
 
 kubectl create secret docker-registry harbor-pull-secret \
--n $NS \
---docker-server=$HARBOR_DOMAIN \
---docker-username=$ROBOT_USER \
---docker-password=$ROBOT_PWD
+-n default \
+--docker-server=harbor.jinshaoyong.com \
+--docker-username='robot$addons' \
+--docker-password=BGvqy2N9AHpGxNo9tnjbWLuBm7BACtYK
 ```
 
 ### 3.2 YAML静态文件创建（适用于GitOps流水线）

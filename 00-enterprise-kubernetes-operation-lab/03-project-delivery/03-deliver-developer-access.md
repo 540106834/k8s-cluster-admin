@@ -9,21 +9,28 @@ validate-project-environment.md｜项目环境验收
 下游关联：validate-project-environment.md、configure-project-resource-policy.md
 
 ## 二、权限设计核心规范
+
 ### 2.1 环境权限隔离原则
+
 1. **dev开发环境**：完整读写权限，允许创建/删除Pod、Deployment、ConfigMap、调试容器exec/logs
 2. **uat测试环境**：只读基础资源+有限写权限，禁止删除核心业务实例，仅允许重启、扩缩容
 3. **prod生产环境**：**仅只读权限**，禁止任何写操作（创建/删除/重启Pod），仅运维管理员具备修改权限
 4. 禁止开发人员跨环境访问，开发账号无法操作prod命名空间
 
 ### 2.2 最小权限RBAC模型
+
 三层资源绑定：
+
 1. ServiceAccount：集群内代表用户身份的账号
 2. Role：单命名空间内权限规则（细分dev/uat/prod三套角色）
 3. RoleBinding：将ServiceAccount与Role绑定，授予命名空间操作权限
 
 ### 2.3 角色权限划分模板
+
 #### 1）DevDeveloper 开发角色（dev命名空间读写）
+
 允许：
+
 - 增删改查：Pod、Deployment、StatefulSet、ConfigMap、Secret、Service、Ingress
 - 容器操作：kubectl exec、logs、port-forward调试
 - 查看：Event、PV、PVC、NetworkPolicy
@@ -31,23 +38,29 @@ validate-project-environment.md｜项目环境验收
 - 删除Namespace、修改ResourceQuota/LimitRange、集群级CRD、节点操作
 
 #### 2）UatTester 测试角色（uat命名空间读写受限）
+
 允许：
+
 - 查看所有资源、重启Deployment、调整副本数、查看日志/exec
 禁止：
 - 删除Deployment/StatefulSet、删除PVC、修改网络策略、修改配额
 
 #### 3）ProdViewer 生产只读角色（prod命名空间纯查看）
+
 仅允许：get/list/watch所有资源、查看日志、exec只读查询容器
 禁止：所有写操作（create/update/patch/delete）
 
 ## 三、前置准备信息
+
 1. 开发人员唯一标识：用户名 `dev-lisi`
 2. 目标项目命名空间：`dev-user-api` / `uat-user-api` / `prod-user-api`
 3. 集群APIServer访问地址、集群CA证书
 4. 集群管理员cluster-admin权限执行授权操作
 
 ## 四、步骤1：创建开发人员全局ServiceAccount（集群级别）
+
 每个开发人员一个独立SA，全局唯一，区分人员身份
+
 ```bash
 # 命名规范：sa-{用户名}
 export USER_NAME=dev-lisi
@@ -57,7 +70,9 @@ kubectl label sa $USER_NAME -n kube-system user=dev-lisi department=business
 ```
 
 ## 五、步骤2：创建命名空间内Role权限模板
+
 ### 5.1 DevDeveloper 角色模板（dev命名空间）
+
 dev-role.yaml
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -82,6 +97,7 @@ rules:
 ```
 
 ### 5.2 UatTester 受限测试角色（uat）
+
 uat-role.yaml
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -105,6 +121,7 @@ rules:
 ```
 
 ### 5.3 ProdViewer 生产只读角色（prod）
+
 prod-role.yaml
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -123,7 +140,9 @@ rules:
 ```
 
 ## 六、步骤3：RoleBinding 将SA绑定对应命名空间角色
+
 ### 6.1 开发人员绑定dev开发全权限
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -141,6 +160,7 @@ roleRef:
 ```
 
 ### 6.2 绑定uat测试受限权限
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -158,6 +178,7 @@ roleRef:
 ```
 
 ### 6.3 生产环境仅绑定只读查看权限
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -175,13 +196,16 @@ roleRef:
 ```
 
 ### 批量执行创建
+
 ```bash
 kubectl apply -f dev-role.yaml -f uat-role.yaml -f prod-role.yaml
 kubectl apply -f dev-binding.yaml -f uat-binding.yaml -f prod-binding.yaml
 ```
 
 ## 七、步骤4：提取ServiceAccount Token，生成用户kubeconfig配置文件
+
 ### 7.1 提取SA永久token
+
 ```bash
 export USER_NAME=dev-lisi
 # 获取自动创建的secret名称（sa对应token secret）
@@ -195,6 +219,7 @@ APISERVER=$(kubectl config view --raw -o jsonpath="{.clusters[0].cluster.server}
 ```
 
 ### 7.2 生成独立kubeconfig（交付给开发人员）
+
 ```bash
 # 新建用户配置文件
 cat > ./kubeconfig-$USER_NAME.yaml << EOF
@@ -220,6 +245,7 @@ EOF
 ```
 
 ### 7.3 权限验证（管理员提前校验，再交付开发）
+
 ```bash
 # 切换dev命名空间，测试创建Pod（应成功）
 KUBECONFIG=./kubeconfig-dev-lisi.yaml kubectl create ns test-demo
@@ -230,6 +256,7 @@ kubectl auth can-i delete deployments -n prod-user-api --kubeconfig ./kubeconfig
 ```
 
 ## 八、步骤5：交付开发人员使用说明
+
 1. 交付文件：`kubeconfig-dev-lisi.yaml`
 2. 使用方式：
    - Linux/Mac：复制至 `~/.kube/config`
@@ -241,7 +268,9 @@ kubectl auth can-i delete deployments -n prod-user-api --kubeconfig ./kubeconfig
 4. 工具适配：IDE（K8s插件）、kubectl、kubecm、Lens均可加载该配置
 
 ## 九、权限回收流程（人员离职/调岗）
+
 ### 9.1 立即回收权限（阻断所有操作）
+
 1. 删除所有RoleBinding绑定关系
 ```bash
 kubectl delete rolebinding dev-lisi-bind-dev -n dev-user-api
@@ -252,10 +281,13 @@ kubectl delete rolebinding dev-lisi-bind-prod -n prod-user-api
 ```bash
 kubectl delete sa dev-lisi -n kube-system
 ```
+
 ### 9.2 归档记录人员权限回收操作日志，留存审计
 
 ## 十、高频权限故障排查
+
 ### 故障1：kubectl操作返回Error: Forbidden 403
+
 根因：未绑定对应RoleBinding、Role缺少对应verbs操作权限、命名空间错误
 排查：
 ```bash
@@ -266,19 +298,24 @@ kubectl describe rolebinding -n dev-user-api | grep 用户名
 ```
 
 ### 故障2：开发人员无法kubectl exec进入容器
+
 根因：Role缺少 `pods/exec` 子资源create权限
 修复：在rules中补充对应子资源权限
 
 ### 故障3：uat环境开发可以删除Deployment
+
 根因：uat角色verbs包含delete，需要移除delete仅保留update/patch
 
 ### 故障4：kubeconfig token失效，认证失败
+
 根因：对应ServiceAccount被删除、关联Secret被删除，重新创建SA生成配置文件
 
 ### 故障5：开发人员可以查看集群全部Secret
+
 根因：Role规则未细分资源，通配符*包含secrets，按需缩小资源范围
 
 ## 十一、生产运维标准化规范
+
 1. 一人一独立ServiceAccount，禁止多人共用同一个权限配置文件
 2. 严格区分三套环境权限，生产环境仅开放只读权限，杜绝开发修改生产资源
 3. 权限遵循最小权限原则，不使用通配符全开权限，按需开放资源与verbs
@@ -288,6 +325,7 @@ kubectl describe rolebinding -n dev-user-api | grep 用户名
 7. 禁止将集群cluster-admin管理员配置交付开发人员，所有操作使用细分RBAC角色
 
 ## 十二、关联文档索引
+
 create-project-workspace.md 项目Namespace环境划分
 validate-project-environment.md 项目环境权限交付验收标准
 configure-project-resource-policy.md 资源配额、网络策略权限协同管控

@@ -263,8 +263,5 @@ validate-project-environment.md 项目命名空间交付验收标准
 build-harbor-registry.md Harbor机器人账号创建规范
 build-storage-platform.md PVC存储资源配额管控
 
-机器人账号：
-```
-robot$addons
-BGvqy2N9AHpGxNo9tnjbWLuBm7BACtYK
+
 ```
