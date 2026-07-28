@@ -29,10 +29,10 @@
 # BGvqy2N9AHpGxNo9tnjbWLuBm7BACtYK
 
 kubectl create secret docker-registry harbor-pull-secret \
--n default \
+-n prod \
 --docker-server=harbor.jinshaoyong.com \
---docker-username='robot$addons' \
---docker-password=BGvqy2N9AHpGxNo9tnjbWLuBm7BACtYK
+--docker-username='robot$prod' \
+--docker-password=8GEJfdJpf0zlJhL57vccjpOwqW154U10
 ```
 
 ### 3.2 YAML静态文件创建（适用于GitOps流水线）
@@ -169,3 +169,6 @@ build-harbor-registry.md Harbor仓库机器人账号创建
 configure-containerd-registry.md 集群节点containerd仓库证书配置
 validate-project-environment.md 项目环境镜像拉取验收标准
 06-network-debug.md 镜像拉取网络、鉴权故障排查工具
+
+robot$prod
+8GEJfdJpf0zlJhL57vccjpOwqW154U10

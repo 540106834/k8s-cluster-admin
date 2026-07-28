@@ -111,8 +111,8 @@ spec:
       cpu: "100m"
       memory: "128Mi"
     max: # 单容器资源上限，禁止超配
-      cpu: "4000m"
-      memory: "4Gi"
+      cpu: "500m"
+      memory: "1Gi"
     type: Container
 ```
 
@@ -127,12 +127,12 @@ metadata:
 spec:
   hard:
     # 计算资源总配额
-    requests.cpu: "16"
-    requests.memory: "16Gi"
-    limits.cpu: "32"
-    limits.memory: "32Gi"
+    requests.cpu: "2"
+    requests.memory: "4Gi"
+    limits.cpu: "2"
+    limits.memory: "4Gi"
     # 资源数量配额
-    pods: 100
+    pods: 50
     persistentvolumeclaims: 50
     services: 30
     deployments.apps: 40
