@@ -164,7 +164,7 @@ spec:
 # 批量创建limitrange、quota、默认网络策略
 kubectl apply -f ./ns-baseline/ -n dev-user-api
 # 校验资源全部创建成功
-kubectl get limitrange,resourcequota,networkpolicy -n dev-user-api
+kubectl get limitrange,resourcequota,networkpolicy -n prod
 ```
 
 ## 六、步骤3：配置私有镜像仓库拉取权限（关联 enable-private-image-access.md）
