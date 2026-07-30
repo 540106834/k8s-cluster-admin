@@ -29,9 +29,9 @@ backup-etcd-cluster.md 集群数据备份规范
 ### 3.1 NFS服务端服务器规划
 独立存储服务器（推荐2台做NFS高可用，本文先单机基础部署）
 1. 操作系统：CentOS Stream 8 / Ubuntu 22.04
-2. 内网IP：`192.168.1.200`
-3. 存储数据目录：`/data/k8s-nfs-share`
-4. 集群内网网段：`192.168.1.0/24`（仅允许集群节点挂载NFS）
+2. 内网IP：`192.168.122.1`
+3. 存储数据目录：`/sdb/nfs`
+4. 集群内网网段：`192.168.122.0/24`（仅允许集群节点挂载NFS）
 5. 硬件：多块磁盘做RAID5/RAID10，避免单盘损坏丢失数据
 
 ### 3.2 K8s集群节点前置依赖（所有Master/Worker）
@@ -70,7 +70,7 @@ chmod -R 777 /data/k8s-nfs-share
 ### 4.3 配置NFS导出配置 /etc/exports
 ```ini
 # 格式：共享目录 允许网段(权限参数)
-/data/k8s-nfs-share 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+/sdb/k8s-nfs 192.168.122.0/24(rw,sync,no_subtree_check,no_root_squash)
 ```
 参数说明：
 1. `rw`：读写权限（只读场景替换为ro）
