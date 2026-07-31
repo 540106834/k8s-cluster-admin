@@ -34,6 +34,13 @@ kubectl create secret docker-registry harbor-pull-secret \
 --docker-username='robot$prod' \
 --docker-password=8GEJfdJpf0zlJhL57vccjpOwqW154U10
 ```
+```bash
+kubectl create secret docker-registry harbor-pull-secret \
+-n default \
+--docker-server=harbor.jinshaoyong.com \
+--docker-username='robot$addons' \
+--docker-password=BGvqy2N9AHpGxNo9tnjbWLuBm7BACtYK
+```
 
 ### 3.2 YAML静态文件创建（适用于GitOps流水线）
 ```yaml
