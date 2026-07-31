@@ -1,11 +1,14 @@
 # deliver-developer-access.md
-# 开发人员RBAC权限、KubeConfig交付标准化操作手册
+
+## 开发人员RBAC权限、KubeConfig交付标准化操作手册
+
 ## 一、文档定位
-本文针对企业K8s多环境集群，完成**开发人员最小权限RBAC授权、自定义ServiceAccount、用户kubeconfig生成、多环境权限隔离、权限回收**全流程标准化SOP；区分dev/uat/prod三套环境权限边界，遵循零信任最小权限原则，配套项目命名空间交付流程。
-前置依赖：
-create-project-workspace.md｜项目Namespace创建
-enable-private-image-access.md｜镜像拉取权限配置
-validate-project-environment.md｜项目环境验收
+
+本文针对企业K8s多环境集群，完成**开发人员最小权限RBAC授权、自定义ServiceAccount、用户kubeconfig生成、多环境权限隔离、权限回收**全流程标准化SOP；区分dev/uat/prod三套环境权限边界，遵循零信任最小权限原则，配套项目命名空间交付流程。  
+前置依赖：  
+create-project-workspace.md｜项目Namespace创建  
+enable-private-image-access.md｜镜像拉取权限配置  
+validate-project-environment.md｜项目环境验收  
 下游关联：validate-project-environment.md、configure-project-resource-policy.md
 
 ## 二、权限设计核心规范
@@ -52,8 +55,8 @@ validate-project-environment.md｜项目环境验收
 
 ## 三、前置准备信息
 
-1. 开发人员唯一标识：用户名 `dev-lisi`
-2. 目标项目命名空间：`dev-user-api` / `uat-user-api` / `prod-user-api`
+1. 开发人员唯一标识：用户名 `dev-user`
+2. 目标项目命名空间：`dev` / `uat-user-api` / `prod-user-api`
 3. 集群APIServer访问地址、集群CA证书
 4. 集群管理员cluster-admin权限执行授权操作
 
@@ -63,10 +66,10 @@ validate-project-environment.md｜项目环境验收
 
 ```bash
 # 命名规范：sa-{用户名}
-export USER_NAME=dev-lisi
+export USER_NAME=dev-user
 kubectl create sa $USER_NAME -n kube-system
 # 添加人员标签便于权限管理
-kubectl label sa $USER_NAME -n kube-system user=dev-lisi department=business
+kubectl label sa $USER_NAME -n kube-system user=$USER_NAME department=business
 ```
 
 ## 五、步骤2：创建命名空间内Role权限模板
@@ -79,7 +82,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: dev-developer
-  namespace: dev-user-api
+  namespace: dev
 rules:
 # 核心业务资源全读写
 - apiGroups: ["","apps","networking.k8s.io"]
@@ -147,11 +150,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: dev-lisi-bind-dev
-  namespace: dev-user-api
+  name: dev-user-bind-dev
+  namespace: dev
 subjects:
 - kind: ServiceAccount
-  name: dev-lisi
+  name: dev-user
   namespace: kube-system
 roleRef:
   kind: Role
@@ -165,11 +168,11 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: dev-lisi-bind-uat
+  name: dev-user-bind-uat
   namespace: uat-user-api
 subjects:
 - kind: ServiceAccount
-  name: dev-lisi
+  name: dev-user
   namespace: kube-system
 roleRef:
   kind: Role
@@ -183,11 +186,11 @@ roleRef:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: dev-lisi-bind-prod
+  name: dev-user-bind-prod
   namespace: prod-user-api
 subjects:
 - kind: ServiceAccount
-  name: dev-lisi
+  name: dev-user
   namespace: kube-system
 roleRef:
   kind: Role
@@ -207,7 +210,7 @@ kubectl apply -f dev-binding.yaml -f uat-binding.yaml -f prod-binding.yaml
 ### 7.1 提取SA永久token
 
 ```bash
-export USER_NAME=dev-lisi
+export USER_NAME=dev-user
 # 获取自动创建的secret名称（sa对应token secret）
 SECRET_NAME=$(kubectl get sa $USER_NAME -n kube-system -o jsonpath="{.secrets[0].name}")
 # 提取token内容
@@ -234,7 +237,7 @@ contexts:
 - context:
     cluster: k8s-cluster
     user: $USER_NAME
-    namespace: dev-user-api # 默认打开开发命名空间
+    namespace: dev # 默认打开开发命名空间
   name: $USER_NAME-context
 current-context: $USER_NAME-context
 users:
@@ -248,16 +251,16 @@ EOF
 
 ```bash
 # 切换dev命名空间，测试创建Pod（应成功）
-KUBECONFIG=./kubeconfig-dev-lisi.yaml kubectl create ns test-demo
+KUBECONFIG=./kubeconfig-dev-user.yaml kubectl create ns test-demo
 # 切换prod命名空间，测试删除Pod（应返回403禁止）
-KUBECONFIG=./kubeconfig-dev-lisi.yaml kubectl delete pod xxx -n prod-user-api
+KUBECONFIG=./kubeconfig-dev-user.yaml kubectl delete pod xxx -n prod-user-api
 # 查看权限校验工具
-kubectl auth can-i delete deployments -n prod-user-api --kubeconfig ./kubeconfig-dev-lisi.yaml
+kubectl auth can-i delete deployments -n prod-user-api --kubeconfig ./kubeconfig-dev-user.yaml
 ```
 
 ## 八、步骤5：交付开发人员使用说明
 
-1. 交付文件：`kubeconfig-dev-lisi.yaml`
+1. 交付文件：`kubeconfig-dev-user.yaml`
 2. 使用方式：
    - Linux/Mac：复制至 `~/.kube/config`
    - Windows：kubectl指定环境变量 `$env:KUBECONFIG="kubeconfig.yaml"`
@@ -273,13 +276,13 @@ kubectl auth can-i delete deployments -n prod-user-api --kubeconfig ./kubeconfig
 
 1. 删除所有RoleBinding绑定关系
 ```bash
-kubectl delete rolebinding dev-lisi-bind-dev -n dev-user-api
-kubectl delete rolebinding dev-lisi-bind-uat -n uat-user-api
-kubectl delete rolebinding dev-lisi-bind-prod -n prod-user-api
+kubectl delete rolebinding dev-user-bind-dev -n dev
+kubectl delete rolebinding dev-user-bind-uat -n uat-user-api
+kubectl delete rolebinding dev-user-bind-prod -n prod-user-api
 ```
 2. 删除ServiceAccount，旧kubeconfig token立即失效
 ```bash
-kubectl delete sa dev-lisi -n kube-system
+kubectl delete sa dev-user -n kube-system
 ```
 
 ### 9.2 归档记录人员权限回收操作日志，留存审计
@@ -292,9 +295,9 @@ kubectl delete sa dev-lisi -n kube-system
 排查：
 ```bash
 # 校验是否具备对应操作权限
-kubectl auth can-i create pods -n dev-user-api --kubeconfig 用户配置
+kubectl auth can-i create pods -n dev --kubeconfig 用户配置
 # 查看当前用户绑定的角色
-kubectl describe rolebinding -n dev-user-api | grep 用户名
+kubectl describe rolebinding -n dev | grep 用户名
 ```
 
 ### 故障2：开发人员无法kubectl exec进入容器

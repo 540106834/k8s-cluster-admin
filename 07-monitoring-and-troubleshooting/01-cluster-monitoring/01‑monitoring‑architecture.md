@@ -7,7 +7,9 @@
 - 文档内容：指标来源分类、完整采集链路、Prometheus组件架构、服务发现、数据持久化、告警分层、USE/RED模型、生产部署模式、区分metrics‑server和Prometheus定位。
 
 ## 二、集群指标四大来源（核心分层）
+
 ### 1. 组件原生内置指标（/metrics HTTP接口）
+
 kube‑apiserver、etcd、kube‑scheduler、kube‑controller‑manager、kubelet、calico‑node、CoreDNS、Ingress‑Controller、containerd，组件内置暴露`/metrics`，格式为Prometheus标准格式。
 > 访问方式：HTTP GET，默认端口各不相同。
 > - apiserver：6443（https）
@@ -16,25 +18,32 @@ kube‑apiserver、etcd、kube‑scheduler、kube‑controller‑manager、kubel
 > - calico‑node：9099
 
 ### 2. node‑exporter（宿主机系统指标）
+
 部署为DaemonSet，在每个节点采集操作系统层面指标：CPU、内存、磁盘使用率、inode、%iowait、TCP连接、网卡收发包、磁盘读写延迟、内核报错信息；弥补容器看不到宿主机内核指标的短板。
 
 ### 3. kube‑state‑metrics（K8s对象状态指标）
+
 把Kubernetes API资源转换成时序指标，本身不采集CPU内存：
+
 - Pod：pod_status_phase、pod_ready、pod_restart_count
 - Deployment：副本就绪数、更新进度
 - Node：节点Ready状态、Lease续约状态、节点三种压力标记
 - PVC/PV：pvc_phase、快照状态、StorageClass信息
 - Secret、证书剩余有效期、RBAC绑定状态。
+
 > 本质是调用apiserver读取对象，输出metrics供Prometheus抓取。
 
 ### 4. 业务自定义指标（应用内部暴露）
+
 业务程序自身提供`/metrics`接口，暴露业务层指标：接口QPS、错误码分布、响应耗时、队列堆积、数据库连接数；用于HPA扩容和业务监控。
 
 ### 补充：metrics‑server 与 Prometheus 职责划分（重点区分）
+
 1. metrics‑server：轻量级，只提供CPU、内存瞬时值，只给`kubectl top`和HPA基础扩容使用；数据内存存放，不持久化历史数据，**不能做趋势分析、告警**。
 2. Prometheus：全量时序数据库，保存长期历史时序数据，做趋势分析、告警、大盘展示、故障回溯，生产监控核心。
 
 ## 三、完整指标采集链路（自上而下）
+
 1. 各个组件开启metrics接口；
 2. ServiceMonitor/PodMonitor（CRD资源）配置抓取规则：命名空间、标签匹配、端口、抓取间隔、超时时间、tls证书；
 3. Prometheus‑Operator基于ServiceMonitor生成 scrape‑config；
@@ -47,6 +56,7 @@ kube‑apiserver、etcd、kube‑scheduler、kube‑controller‑manager、kubel
 8. 日志体系Filebeat‑ELK独立于监控体系，只处理日志，时序指标由Prometheus负责。
 
 ### 采集参数生产标准值
+
 ```yaml
 interval: 15s        # 默认抓取间隔15s
 scrape_timeout: 10s  # 超时10s
@@ -54,7 +64,9 @@ evaluation_interval:15s #告警规则计算周期15s
 ```
 
 ## 四、Prometheus整体组件架构（生产落地架构）
+
 ### 4.1 组件清单
+
 1. prometheus‑operator：管理Prometheus、Alertmanager、ServiceMonitor、PodMonitor、PrometheusRule CRD，统一声明式配置，GitOps管理；
 2. prometheus：时序数据库核心，存储metrics；
 3. alertmanager：告警收敛与分发；
