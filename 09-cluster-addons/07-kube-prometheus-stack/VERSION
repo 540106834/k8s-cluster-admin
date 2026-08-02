@@ -1,0 +1,30 @@
+# VERSION 文件（纯文本单行文件，直接落地）
+```
+K8S=v1.32;
+Chart=kube-prometheus-stack-65.1.0;
+StorageClass=nfs-sc;
+Repo=MinIO离线Chart;
+Helm=v3.15+
+```
+
+## 文件使用说明
+1. 文件路径：`kube-prometheus-stack/VERSION`，无后缀，UTF-8 纯文本，无换行
+2. 字段分隔：分号 `;` 分割，键值用等号 `=`，便于脚本 `grep/sed/awk` 解析读取
+3. 字段释义
+    - K8S：集群基准版本，约束所有部署操作
+    - Chart：锁定监控 Chart 完整版本号，离线下载、升级脚本依赖此值
+    - StorageClass：全局持久化存储类名称，values、manifests 统一对齐
+    - Repo：Chart 来源标识，区分离线 MinIO / 在线官方源
+    - Helm：最低兼容 Helm 客户端版本要求
+4. 脚本读取示例（scripts/install.sh 内可直接使用）
+```bash
+# 提取Chart版本
+CHART_VERSION=$(cat VERSION | awk -F';|=' '/Chart/{print $2}')
+# 提取K8s基线版本
+K8S_BASE=$(cat VERSION | awk -F';|=' '/K8S/{print $2}')
+# 提取存储类
+SC_NAME=$(cat VERSION | awk -F';|=' '/StorageClass/{print $2}')
+```
+5. 更新规则
+    - 仅当集群K8s升级、Chart版本更换、存储类切换时修改此文件
+    - 修改后必须同步更新 CHANGELOG.md 记录版本变更
