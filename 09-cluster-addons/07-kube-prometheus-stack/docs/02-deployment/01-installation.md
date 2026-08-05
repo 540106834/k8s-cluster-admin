@@ -29,6 +29,10 @@
 # 1. K8s 版本校验，锁定 v1.32
 kubectl version --short
 # Server Version: v1.32.x
+root@k8s-master-192-168-122-100:~# kubectl version 
+Client Version: v1.32.0
+Kustomize Version: v5.5.0
+Server Version: v1.32.0
 
 # 2. NFS StorageClass 就绪 nfs-sc
 kubectl get sc nfs-sc
@@ -38,14 +42,20 @@ kubectl get sc nfs-sc
 kubectl get secret harbor-pull-secret -n default
 kubectl run test-pull --image=harbor.example.com/library/busybox:latest --rm
 
+root@k8s-master-192-168-122-100:~# kubectl get secrets harbor-pull-secret 
+NAME                 TYPE                             DATA   AGE
+harbor-pull-secret   kubernetes.io/dockerconfigjson   1      4d20h
+
 # 4. MinIO Chart 存储桶可访问（存放 kube-prometheus-stack-65.1.0.tgz）
-mc ls minio-monitor/charts/
+root@k8s-master-192-168-122-100:~# mc ls minio/helm-charts/kube-prometheus-stack/kube-prometheus-stack-65.1.0.tgz 
+[2026-07-29 17:37:25 CST] 577KiB STANDARD kube-prometheus-stack-65.1.0.tgz
 
 # 5. Git 配置仓库拉取正常（values、CRD、dashboard json）
 git clone git@git.example.com:platform/kube-monitor.git
 ```
 
 ## 1.2 资源容量前置规划（参考 10-best-practices/01-resource-planning.md）
+
 - Prometheus StatefulSet：2C4G，PVC 500Gi `nfs-sc`
 - Alertmanager StatefulSet：0.5C1G，PVC 20Gi `nfs-sc`
 - Grafana Deployment：1C2G，PVC 30Gi `nfs-sc`
@@ -53,6 +63,7 @@ git clone git@git.example.com:platform/kube-monitor.git
 - kube-state-metrics：0.5C1G
 
 ## 1.3 离线资源包校验
+
 MinIO 桶内必须存在 Chart 压缩包：
 `kube-prometheus-stack-65.1.0.tgz`
 
@@ -62,7 +73,9 @@ MinIO 桶内必须存在 Chart 压缩包：
 ---
 
 # 2. 离线资源前置准备
+
 ## 2.1 MinIO 上传 Chart 包（已提前完成，部署仅校验）
+
 1. 外网机器下载官方 Chart
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -74,14 +87,24 @@ mc cp kube-prometheus-stack-65.1.0.tgz minio-monitor/charts/
 ```
 
 ## 2.2 全组件镜像离线推送到 Harbor
+
 kube-prometheus-stack 包含镜像清单：
-- prometheus
-- alertmanager
-- grafana
-- kube-state-metrics
-- node-exporter
-- prometheus-operator
-- config-reloader
+```bash
+root@k8s-master-192-168-122-100:~# helm template monitoring kube-prometheus-stack-65.1.0.tgz \
+> | grep "image:" \
+> | sed 's/.*image: //' \
+> | sort -u
+"docker.io/bats/bats:v1.4.1"
+"docker.io/grafana/grafana:11.2.1"
+"quay.io/kiwigrid/k8s-sidecar:1.27.4"
+"quay.io/prometheus-operator/prometheus-operator:v0.77.1"
+"quay.io/prometheus/alertmanager:v0.27.0"
+"quay.io/prometheus/prometheus:v2.54.1"
+quay.io/prometheus/node-exporter:v1.8.2
+registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20221220-controller-v1.5.1-58-g787ea74b6
+registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0
+```
+
 离线导出镜像，批量导入私有 Harbor，values 中统一替换 `image.repository` 为内网 Harbor 地址。
 
 ## 2.3 Git 配置仓库目录说明

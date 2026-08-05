@@ -58,20 +58,29 @@
 ---
 
 ## 3. 基础设施指标采集组件
+
 ### 3.1 kube-state-metrics
+
 #### 定位
+
 Kubernetes集群元数据指标采集器，**不采集CPU/内存，只采集集群资源对象状态**。
+
 #### 采集指标范围
+
 - Node：节点就绪状态、污点、标签、资源分配上限
 - Deployment/StatefulSet/DaemonSet：期望副本、就绪副本、更新进度
 - Pod：运行状态、重启次数、容器OOM、调度节点
 - PVC/PV：存储容量、挂载状态、StorageClass绑定关系
 - HPA、Ingress、ConfigMap、Secret、Job/CronJob、Event事件
+
 #### 运行形态
+
 Deployment，单副本；通过ServiceMonitor自动接入Prometheus抓取。
+
 #### 存储：无持久化，纯内存指标。
 
 ### 3.2 node-exporter
+
 #### 定位
 宿主机硬件、操作系统指标采集器，DaemonSet部署，每个节点一个实例。
 #### 采集指标范围
