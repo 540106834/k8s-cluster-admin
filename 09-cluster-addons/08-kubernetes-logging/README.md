@@ -40,11 +40,32 @@ kubernetes-logging/
 │   ├── index-management.md                        # Index、Shard、Lifecycle管理
 │   └── backup-restore.md                          # 日志备份恢复方案
 │
-├── 05-reliability-design/                          # 日志平台稳定性设计
-│   ├── high-availability.md                       # Collector和Storage高可用设计
-│   ├── failure-scenarios.md                       # 日志丢失、节点故障、存储异常分析
-│   ├── performance-tuning.md                     # 吞吐量、延迟、资源优化
-│   └── scaling-strategy.md                        # 日志量增长后的扩容策略
+├── 05-platform-implementations/                  # 日志平台实现方案
+│   ├── overview.md                              # Loki、ELK、ClickHouse方案对比
+│   │
+│   ├── loki/
+│   │   ├── architecture.md                      # Loki整体架构
+│   │   ├── components.md                        # Distributor、Ingester、Querier等组件
+│   │   ├── deployment.md                        # Single Binary / Simple Scalable / Distributed
+│   │   ├── storage.md                           # TSDB、Object Storage、Index Gateway
+│   │   ├── scaling.md                           # 横向扩容设计
+│   │   └── best-practices.md                    # 标签设计、查询优化
+│   │
+│   ├── clickhouse/
+│   │   ├── architecture.md                      # ClickHouse日志架构
+│   │   ├── components.md                        # Fluent Bit、Kafka、Vector、ClickHouse
+│   │   ├── deployment.md                        # 单节点、Cluster部署
+│   │   ├── table-design.md                      # MergeTree、Partition、Order By
+│   │   ├── scaling.md                           # Shard、Replica扩容
+│   │   └── best-practices.md                    # TTL、Compression、Materialized View
+│   │
+│   └── elk/
+│       ├── architecture.md                      # ELK整体架构
+│       ├── components.md                        # Beats、Logstash、ES、Kibana
+│       ├── deployment.md                        # 单节点、多节点部署
+│       ├── index-design.md                      # Index、Template、ILM
+│       ├── scaling.md                           # Hot/Warm/Cold架构
+│       └── best-practices.md                    # Shard、副本、Mapping优化
 │
 ├── 06-security-design/                             # 日志安全设计
 │   ├── rbac-design.md                             # Kubernetes日志访问权限设计
